@@ -200,9 +200,7 @@ static double *gblcblk = nullptr;
 /** contribution from the image charges */
 static double lclimge[8];
 
-struct SCCache {
-  double s, c;
-};
+
 
 /** sin/cos caching */
 static std::vector<SCCache> scxcache;
@@ -249,11 +247,9 @@ static void add_z_force();
 static double z_energy();
 /** p=0 per frequency code */
 static void setup_P(int p, double omega, double fac);
-static void add_P_force();
 static double P_energy(double omega);
 /** q=0 per frequency code */
 static void setup_Q(int q, double omega, double fac);
-static void add_Q_force();
 static double Q_energy(double omega);
 /** p,q <> 0 per frequency code */
 static void setup_PQ(int p, int q, double omega, double fac);
@@ -366,23 +362,6 @@ inline void scale_vec(double scale, double *pdc, int size) {
   int i;
   for (i = 0; i < size; i++)
     pdc[i] *= scale;
-}
-
-/* block indexing - has to fit to the PQ block definitions above.
-   size gives the full size of the data block,
-   e_size is the size of only the top or bottom half, i.e. half of size.
-*/
-
-inline double *block(double *p, int index, int size) {
-  return &p[index * size];
-}
-
-inline double *blwentry(double *p, int index, int e_size) {
-  return &p[2 * index * e_size];
-}
-
-inline double *abventry(double *p, int index, int e_size) {
-  return &p[(2 * index + 1) * e_size];
 }
 
 /* dealing with the image contributions from far outside the simulation box */
@@ -800,6 +779,8 @@ static void setup_Q(int q, double omega, double fac) {
   setup(q, omega, fac, n_scycache, scycache);
 }
 
+
+/*
 template <size_t dir> static void add_force() {
   constexpr const auto size = 4;
 
@@ -831,6 +812,8 @@ template <size_t dir> static void add_force() {
 
 static void add_P_force() { add_force<0>(); }
 static void add_Q_force() { add_force<1>(); }
+*/
+
 
 static double P_energy(double omega) {
   int np, c, i, ic;
@@ -1137,7 +1120,7 @@ static void add_force_contribution(int p, int q) {
       else
         clear_image_contributions(2);
       distribute(2, fac);
-      add_P_force();
+      elc_mmm2d_common_add_P_force();
       checkpoint("************distri p", p, 0, 2);
     }
   } else if (p == 0) {
@@ -1149,7 +1132,7 @@ static void add_force_contribution(int p, int q) {
     else
       clear_image_contributions(2);
     distribute(2, fac);
-    add_Q_force();
+    elc_mmm2d_common_add_Q_force();
     checkpoint("************distri q", 0, q, 2);
   } else {
     omega = C_2PI * sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));

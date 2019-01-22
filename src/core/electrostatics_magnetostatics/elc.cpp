@@ -30,6 +30,7 @@
 #include "electrostatics_magnetostatics/p3m.hpp"
 #include "errorhandling.hpp"
 #include "mmm-common.hpp"
+#include "elc_mmm2d_common.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
 #include "particle_data.hpp"
 #include "pressure.hpp"
@@ -92,10 +93,12 @@ static double *partblk = nullptr;
 /** collected data from the other cells */
 static double gblcblk[8];
 
-/** structure for storing of sin and cos values */
+/*
+// structure for storing of sin and cos values //
 typedef struct {
   double s, c;
 } SCCache;
+*/
 
 /** \name sin/cos caching */
 /*@{*/
