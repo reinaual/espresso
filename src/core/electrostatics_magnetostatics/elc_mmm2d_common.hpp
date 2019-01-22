@@ -1,0 +1,11 @@
+
+#ifndef ELC_MMM2D_COMMON
+#define ELC_MMM2D_COMMON
+
+#ifdef ELECTROSTATICS
+
+
+
+#endif /* ELECTROSTATICS */
+
+#endif /* ELC_MMM2D_COMMON */
