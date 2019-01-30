@@ -1,0 +1,103 @@
+#!/bin/sh
+# Copyright (C) 2010-2018 The ESPResSo project
+# 
+# Copying and distribution of this file, with or without modification,
+# are permitted in any medium without royalty provided the copyright
+# notice and this notice are preserved.  This file is offered as-is,
+# without any warranty.
+#
+
+if test -n "$PYTHONPATH"; then
+  PYTHONPATH=/usr/local/lib/python2.7/dist-packages:$PYTHONPATH
+else
+  PYTHONPATH=/usr/local/lib/python2.7/dist-packages
+fi
+export PYTHONPATH
+
+if [ "GNU" != "GNU" -a "OFF" = "ON" ]; then
+  asan_lib=$("/usr/bin/c++" /dev/null -### -o /dev/null -fsanitize=address 2>&1 | grep -o '[" ][^" ]*libclang_rt.asan[^" ]*[^s][" ]' | sed 's/[" ]//g' | sed 's/\.a$/.so/g')
+  for lib in $asan_lib; do
+      test -f $lib && LD_PRELOAD="$lib $LD_PRELOAD"
+  done
+fi
+if [ "GNU" != "GNU" -a "OFF" = "ON" -a "OFF" != "ON" ]; then
+  ubsan_lib=$("/usr/bin/c++" /dev/null -### -o /dev/null -fsanitize=undefined 2>&1 | grep -o '[" ][^" ]*libclang_rt.ubsan[^" ]*[^s][" ]' | sed 's/[" ]//g' | sed 's/\.a$/.so/g')
+  for lib in $ubsan_lib; do
+    test -f $lib && LD_PRELOAD="$lib $LD_PRELOAD"
+  done
+fi
+export LD_PRELOAD
+if [ "OFF" = "ON" ]; then
+  if [ "OFF" = "ON" ]; then
+    export UBSAN_OPTIONS="halt_on_error=1 print_stacktrace=1 suppressions=/home/areinauer/Documents/hiwi/espresso/tools/ubsan-suppressions.txt $UBSAN_OPTIONS"
+  else
+    export UBSAN_OPTIONS="print_stacktrace=1 suppressions=/home/areinauer/Documents/hiwi/espresso/tools/ubsan-suppressions.txt $UBSAN_OPTIONS"
+  fi
+fi
+if [ "OFF" = "ON" ]; then
+  if [ "OFF" = "ON" ]; then
+    ASAN_OPTIONS="halt_on_error=1 protect_shadow_gap=0 $ASAN_OPTIONS"
+  else
+    ASAN_OPTIONS="protect_shadow_gap=0 $ASAN_OPTIONS"
+  fi
+  if [ "$1" = "--leaks" ]; then
+    shift
+  else
+    ASAN_OPTIONS="$ASAN_OPTIONS detect_leaks=0"
+  fi
+  export ASAN_OPTIONS
+fi
+if [ "" = "ON" -a "OFF" = "ON" ]; then
+  export MSAN_OPTIONS="halt_on_error=1 $MSAN_OPTIONS"
+fi
+
+case $1 in
+    --gdb)
+        shift
+        exec gdb --args /usr/bin/ipython $@
+        ;;
+    --lldb)
+        shift
+        exec lldb -- /usr/bin/ipython $@
+        ;;
+    --valgrind)
+        shift
+        exec valgrind --leak-check=full /usr/bin/ipython $@
+        ;;
+    --cuda-gdb)
+        shift
+        exec cuda-gdb --args /usr/bin/ipython $@
+        ;;
+    --cuda-memcheck)
+        shift
+        exec cuda-memcheck /usr/bin/ipython $@
+        ;;
+    --gdb=*)
+        options="${1#*=}"
+        shift
+        exec gdb ${options} --args /usr/bin/ipython $@
+        ;;
+    --lldb=*)
+        options="${1#*=}"
+        shift
+        exec lldb ${options} -- /usr/bin/ipython $@
+        ;;
+    --valgrind=*)
+        options="${1#*=}"
+        shift
+        exec valgrind ${options} /usr/bin/ipython $@
+        ;;
+    --cuda-gdb=*)
+        options="${1#*=}"
+        shift
+        exec cuda-gdb ${options} --args /usr/bin/ipython $@
+        ;;
+    --cuda-memcheck=*)
+        options="${1#*=}"
+        shift
+        exec cuda-memcheck ${options} /usr/bin/ipython $@
+        ;;
+    *)
+        exec /usr/bin/ipython "$@"
+        ;;
+esac

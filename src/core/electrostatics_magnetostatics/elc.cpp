@@ -26,6 +26,7 @@
  */
 #include "electrostatics_magnetostatics/elc.hpp"
 #include "cells.hpp"
+#include "layered.hpp"
 #include "communication.hpp"
 #include "electrostatics_magnetostatics/p3m.hpp"
 #include "errorhandling.hpp"
@@ -180,10 +181,14 @@ static void prepare_sc_cache(std::vector<SCCache> &sccache, double u,
     auto const o = (freq - 1) * n_localpart;
 
     int ic = 0;
-    for (auto const &part : local_cells.particles()) {
-      double arg = pref * part.r.p[dir];
-      sccache[o + ic] = sc(arg);
-      ic++;
+    for (int c = 1; c <= n_layers; c++) {
+      auto const np = cells[c].n;
+      auto part = cells[c].part;
+      for (int i = 0; i < np; i++) {
+        double arg = pref * part[i].r.p[dir];
+        sccache[o + ic] = sc(arg);
+        ic++;
+      }
     }
   }
 }
@@ -304,20 +309,24 @@ static void add_dipole_force() {
   gblcblk[1] = 0; // sum q_i z_i
   gblcblk[2] = 0; // sum q_i
 
-  for (auto const &p : local_cells.particles()) {
-    gblcblk[0] += p.p.q * (p.r.p[2] - shift);
-    gblcblk[1] += p.p.q * p.r.p[2];
-    gblcblk[2] += p.p.q;
+  for (int c = 1; c <= n_layers; c++) {
+    auto const np = cells[c].n;
+    auto part = cells[c].part;
+    for (int i = 0; i < np; i++) {
+      gblcblk[0] += part[i].p.q * (part[i].r.p[2] - shift);
+      gblcblk[1] += part[i].p.q * part[i].r.p[2];
+      gblcblk[2] += part[i].p.q;
 
-    if (elc_params.dielectric_contrast_on) {
-      if (p.r.p[2] < elc_params.space_layer) {
-        gblcblk[0] += elc_params.delta_mid_bot * p.p.q * (-p.r.p[2] - shift);
-        gblcblk[2] += elc_params.delta_mid_bot * p.p.q;
-      }
-      if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-        gblcblk[0] += elc_params.delta_mid_top * p.p.q *
-                      (2 * elc_params.h - p.r.p[2] - shift);
-        gblcblk[2] += elc_params.delta_mid_top * p.p.q;
+      if (elc_params.dielectric_contrast_on) {
+        if (part[i].r.p[2] < elc_params.space_layer) {
+          gblcblk[0] += elc_params.delta_mid_bot * part[i].p.q * (-part[i].r.p[2] - shift);
+          gblcblk[2] += elc_params.delta_mid_bot * part[i].p.q;
+        }
+        if (part[i].r.p[2] > (elc_params.h - elc_params.space_layer)) {
+          gblcblk[0] += elc_params.delta_mid_top * part[i].p.q *
+                        (2 * elc_params.h - part[i].r.p[2] - shift);
+          gblcblk[2] += elc_params.delta_mid_top * part[i].p.q;
+        }
       }
     }
   }
@@ -338,12 +347,16 @@ static void add_dipole_force() {
     field_tot -= field_applied + field_induced;
   }
 
-  for (auto &p : local_cells.particles()) {
-    p.f.f[2] -= field_tot * p.p.q;
+  for (int c = 1; c <= n_layers; c++) {
+    auto const np = cells[c].n;
+    auto part = cells[c].part;
+    for (int i = 0; i < np; i++) {
+      part[i].f.f[2] -= field_tot * part[i].p.q;
 
-    if (!elc_params.neutralize) {
-      // SUBTRACT the forces of the P3M homogeneous neutralizing background
-      p.f.f[2] += gblcblk[2] * p.p.q * (p.r.p[2] - shift);
+      if (!elc_params.neutralize) {
+        // SUBTRACT the forces of the P3M homogeneous neutralizing background
+        part[i].f.f[2] += gblcblk[2] * part[i].p.q * (part[i].r.p[2] - shift);
+      }
     }
   }
 }
@@ -365,25 +378,29 @@ static double dipole_energy() {
   gblcblk[5] = 0; // sum q_i (z_i - L/2)^2 boundary layers
   gblcblk[6] = 0; // sum q_i z_i           primary box
 
-  for (auto &p : local_cells.particles()) {
-    gblcblk[0] += p.p.q;
-    gblcblk[2] += p.p.q * (p.r.p[2] - shift);
-    gblcblk[4] += p.p.q * (Utils::sqr(p.r.p[2] - shift));
-    gblcblk[6] += p.p.q * p.r.p[2];
+  for (int c = 1; c <= n_layers; c++) {
+    auto const np = cells[c].n;
+    auto part = cells[c].part;
+    for (int i = 0; i < np; i++) {
+      gblcblk[0] += part[i].p.q;
+      gblcblk[2] += part[i].p.q * (part[i].r.p[2] - shift);
+      gblcblk[4] += part[i].p.q * (Utils::sqr(part[i].r.p[2] - shift));
+      gblcblk[6] += part[i].p.q * part[i].r.p[2];
 
-    if (elc_params.dielectric_contrast_on) {
-      if (p.r.p[2] < elc_params.space_layer) {
-        gblcblk[1] += elc_params.delta_mid_bot * p.p.q;
-        gblcblk[3] += elc_params.delta_mid_bot * p.p.q * (-p.r.p[2] - shift);
-        gblcblk[5] +=
-                elc_params.delta_mid_bot * p.p.q * (Utils::sqr(-p.r.p[2] - shift));
-      }
-      if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-        gblcblk[1] += elc_params.delta_mid_top * p.p.q;
-        gblcblk[3] += elc_params.delta_mid_top * p.p.q *
-                      (2 * elc_params.h - p.r.p[2] - shift);
-        gblcblk[5] += elc_params.delta_mid_top * p.p.q *
-                      (Utils::sqr(2 * elc_params.h - p.r.p[2] - shift));
+      if (elc_params.dielectric_contrast_on) {
+        if (part[i].r.p[2] < elc_params.space_layer) {
+          gblcblk[1] += elc_params.delta_mid_bot * part[i].p.q;
+          gblcblk[3] += elc_params.delta_mid_bot * part[i].p.q * (-part[i].r.p[2] - shift);
+          gblcblk[5] +=
+                  elc_params.delta_mid_bot * part[i].p.q * (Utils::sqr(-part[i].r.p[2] - shift));
+        }
+        if (part[i].r.p[2] > (elc_params.h - elc_params.space_layer)) {
+          gblcblk[1] += elc_params.delta_mid_top * part[i].p.q;
+          gblcblk[3] += elc_params.delta_mid_top * part[i].p.q *
+                        (2 * elc_params.h - part[i].r.p[2] - shift);
+          gblcblk[5] += elc_params.delta_mid_top * part[i].p.q *
+                        (Utils::sqr(2 * elc_params.h - part[i].r.p[2] - shift));
+        }
       }
     }
   }
@@ -452,17 +469,21 @@ static double z_energy() {
   if (elc_params.dielectric_contrast_on) {
     if (elc_params.const_pot) {
       clear_vec(gblcblk, size);
-      for (auto &p : local_cells.particles()) {
-        gblcblk[0] += p.p.q;
-        gblcblk[1] += p.p.q * (p.r.p[2] - shift);
-        if (p.r.p[2] < elc_params.space_layer) {
-          gblcblk[2] -= elc_params.delta_mid_bot * p.p.q;
-          gblcblk[3] -= elc_params.delta_mid_bot * p.p.q * (-p.r.p[2] - shift);
-        }
-        if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-          gblcblk[2] += elc_params.delta_mid_top * p.p.q;
-          gblcblk[3] += elc_params.delta_mid_top * p.p.q *
-                        (2 * elc_params.h - p.r.p[2] - shift);
+      for (int c = 1; c <= n_layers; c++) {
+        auto const np = cells[c].n;
+        auto part = cells[c].part;
+        for (int i = 0; i < np; i++) {
+          gblcblk[0] += part[i].p.q;
+          gblcblk[1] += part[i].p.q * (part[i].r.p[2] - shift);
+          if (part[i].r.p[2] < elc_params.space_layer) {
+            gblcblk[2] -= elc_params.delta_mid_bot * part[i].p.q;
+            gblcblk[3] -= elc_params.delta_mid_bot * part[i].p.q * (-part[i].r.p[2] - shift);
+          }
+          if (part[i].r.p[2] > (elc_params.h - elc_params.space_layer)) {
+            gblcblk[2] += elc_params.delta_mid_top * part[i].p.q;
+            gblcblk[3] += elc_params.delta_mid_top * part[i].p.q *
+                          (2 * elc_params.h - part[i].r.p[2] - shift);
+          }
         }
       }
     } else {
@@ -472,38 +493,42 @@ static double z_energy() {
       double fac_delta = delta / (1 - delta);
 
       clear_vec(gblcblk, size);
-      for (auto &p : local_cells.particles()) {
-        gblcblk[0] += p.p.q;
-        gblcblk[1] += p.p.q * (p.r.p[2] - shift);
-        if (elc_params.dielectric_contrast_on) {
-          if (p.r.p[2] < elc_params.space_layer) {
-            gblcblk[2] += fac_delta * (elc_params.delta_mid_bot + 1) * p.p.q;
-            gblcblk[3] +=
-                    p.p.q * (image_sum_b(elc_params.delta_mid_bot * delta,
-                                         -(2 * elc_params.h + p.r.p[2])) +
-                             image_sum_b(delta, -(2 * elc_params.h - p.r.p[2])));
-          } else {
-            gblcblk[2] +=
-                    fac_delta_mid_bot * (1 + elc_params.delta_mid_top) * p.p.q;
-            gblcblk[3] +=
-                    p.p.q * (image_sum_b(elc_params.delta_mid_bot, -p.r.p[2]) +
-                             image_sum_b(delta, -(2 * elc_params.h - p.r.p[2])));
-          }
-          if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-            // note the minus sign here which is required due to |z_i-z_j|
-            gblcblk[2] -= fac_delta * (elc_params.delta_mid_top + 1) * p.p.q;
-            gblcblk[3] -=
-                    p.p.q * (image_sum_t(elc_params.delta_mid_top * delta,
-                                         4 * elc_params.h - p.r.p[2]) +
-                             image_sum_t(delta, 2 * elc_params.h + p.r.p[2]));
-          } else {
-            // note the minus sign here which is required due to |z_i-z_j|
-            gblcblk[2] -=
-                    fac_delta_mid_top * (1 + elc_params.delta_mid_bot) * p.p.q;
-            gblcblk[3] -=
-                    p.p.q * (image_sum_t(elc_params.delta_mid_top,
-                                         2 * elc_params.h - p.r.p[2]) +
-                             image_sum_t(delta, 2 * elc_params.h + p.r.p[2]));
+      for (int c = 1; c <= n_layers; c++) {
+        auto const np = cells[c].n;
+        auto part = cells[c].part;
+        for (int i = 0; i < np; i++) {
+          gblcblk[0] += part[i].p.q;
+          gblcblk[1] += part[i].p.q * (part[i].r.p[2] - shift);
+          if (elc_params.dielectric_contrast_on) {
+            if (part[i].r.p[2] < elc_params.space_layer) {
+              gblcblk[2] += fac_delta * (elc_params.delta_mid_bot + 1) * part[i].p.q;
+              gblcblk[3] +=
+                      part[i].p.q * (image_sum_b(elc_params.delta_mid_bot * delta,
+                                                 -(2 * elc_params.h + part[i].r.p[2])) +
+                                     image_sum_b(delta, -(2 * elc_params.h - part[i].r.p[2])));
+            } else {
+              gblcblk[2] +=
+                      fac_delta_mid_bot * (1 + elc_params.delta_mid_top) * part[i].p.q;
+              gblcblk[3] +=
+                      part[i].p.q * (image_sum_b(elc_params.delta_mid_bot, -part[i].r.p[2]) +
+                                     image_sum_b(delta, -(2 * elc_params.h - part[i].r.p[2])));
+            }
+            if (part[i].r.p[2] > (elc_params.h - elc_params.space_layer)) {
+              // note the minus sign here which is required due to |z_i-z_j|
+              gblcblk[2] -= fac_delta * (elc_params.delta_mid_top + 1) * part[i].p.q;
+              gblcblk[3] -=
+                      part[i].p.q * (image_sum_t(elc_params.delta_mid_top * delta,
+                                                 4 * elc_params.h - part[i].r.p[2]) +
+                                     image_sum_t(delta, 2 * elc_params.h + part[i].r.p[2]));
+            } else {
+              // note the minus sign here which is required due to |z_i-z_j|
+              gblcblk[2] -=
+                      fac_delta_mid_top * (1 + elc_params.delta_mid_bot) * part[i].p.q;
+              gblcblk[3] -=
+                      part[i].p.q * (image_sum_t(elc_params.delta_mid_top,
+                                                 2 * elc_params.h - part[i].r.p[2]) +
+                                     image_sum_t(delta, 2 * elc_params.h + part[i].r.p[2]));
+            }
           }
         }
       }
@@ -526,11 +551,15 @@ static void add_z_force() {
     if (elc_params.const_pot) {
       clear_vec(gblcblk, size);
       /* just counter the 2 pi |z| contribution stemming from P3M */
-      for (auto &p : local_cells.particles()) {
-        if (p.r.p[2] < elc_params.space_layer)
-          gblcblk[0] -= elc_params.delta_mid_bot * p.p.q;
-        if (p.r.p[2] > (elc_params.h - elc_params.space_layer))
-          gblcblk[0] += elc_params.delta_mid_top * p.p.q;
+      for (int c = 1; c <= n_layers; c++) {
+        auto const np = cells[c].n;
+        auto part = cells[c].part;
+        for (int i = 0; i < np; i++) {
+          if (part[i].r.p[2] < elc_params.space_layer)
+            gblcblk[0] -= elc_params.delta_mid_bot * part[i].p.q;
+          if (part[i].r.p[2] > (elc_params.h - elc_params.space_layer))
+            gblcblk[0] += elc_params.delta_mid_top * part[i].p.q;
+        }
       }
     } else {
       double delta = elc_params.delta_mid_top * elc_params.delta_mid_bot;
@@ -539,21 +568,25 @@ static void add_z_force() {
       double fac_delta = delta / (1 - delta);
 
       clear_vec(gblcblk, size);
-      for (auto &p : local_cells.particles()) {
-        if (p.r.p[2] < elc_params.space_layer) {
-          gblcblk[0] += fac_delta * (elc_params.delta_mid_bot + 1) * p.p.q;
-        } else {
-          gblcblk[0] +=
-                  fac_delta_mid_bot * (1 + elc_params.delta_mid_top) * p.p.q;
-        }
+      for (int c = 1; c <= n_layers; c++) {
+        auto const np = cells[c].n;
+        auto part = cells[c].part;
+        for (int i = 0; i < np; i++) {
+          if (part[i].r.p[2] < elc_params.space_layer) {
+            gblcblk[0] += fac_delta * (elc_params.delta_mid_bot + 1) * part[i].p.q;
+          } else {
+            gblcblk[0] +=
+                    fac_delta_mid_bot * (1 + elc_params.delta_mid_top) * part[i].p.q;
+          }
 
-        if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-          // note the minus sign here which is required due to |z_i-z_j|
-          gblcblk[0] -= fac_delta * (elc_params.delta_mid_top + 1) * p.p.q;
-        } else {
-          // note the minus sign here which is required due to |z_i-z_j|
-          gblcblk[0] -=
-                  fac_delta_mid_top * (1 + elc_params.delta_mid_bot) * p.p.q;
+          if (part[i].r.p[2] > (elc_params.h - elc_params.space_layer)) {
+            // note the minus sign here which is required due to |z_i-z_j|
+            gblcblk[0] -= fac_delta * (elc_params.delta_mid_top + 1) * part[i].p.q;
+          } else {
+            // note the minus sign here which is required due to |z_i-z_j|
+            gblcblk[0] -=
+                    fac_delta_mid_top * (1 + elc_params.delta_mid_bot) * part[i].p.q;
+          }
         }
       }
     }
@@ -562,8 +595,12 @@ static void add_z_force() {
 
     distribute(size);
 
-    for (auto &p : local_cells.particles()) {
-      p.f.f[2] += gblcblk[0] * p.p.q;
+    for (int c = 1; c <= n_layers; c++) {
+      auto const np = cells[c].n;
+      auto part = cells[c].part;
+      for (int i = 0; i < np; i++) {
+        part[i].f.f[2] += gblcblk[0] * part[i].p.q;
+      }
     }
   }
 }
@@ -595,80 +632,105 @@ static void setup(int p, double omega, Utils::Span<const SCCache> sccache) {
   clear_vec(gblcblk, size);
 
   ic = 0;
-  for (auto &p : local_cells.particles()) {
-    double e = exp(omega * p.r.p[2]);
+  for (int c = 1; c <= n_layers; c++) {
+    auto const np = cells[c].n;
+    auto part = cells[c].part;
+    for (int i = 0; i < np; i++) {
+      double e = exp(omega * part[i].r.p[2]);
 
-    partblk[size * ic + POQESM] = sccache[o + ic].s / e;
-    partblk[size * ic + POQESP] = sccache[o + ic].s * e;
-    partblk[size * ic + POQECM] = sccache[o + ic].c / e;
-    partblk[size * ic + POQECP] = sccache[o + ic].c * e;
+      partblk[size * ic + POQESM] = sccache[o + ic].s / e;
+      partblk[size * ic + POQESP] = sccache[o + ic].s * e;
+      partblk[size * ic + POQECM] = sccache[o + ic].c / e;
+      partblk[size * ic + POQECP] = sccache[o + ic].c * e;
 
-    addscale_vec(gblcblk, p.p.q, block(partblk, ic, size), gblcblk, size);
+      addscale_vec(gblcblk, part[i].p.q, block(partblk, ic, size), gblcblk, size);
 
-    if (elc_params.dielectric_contrast_on) {
-      if (p.r.p[2] < elc_params.space_layer) { // handle the lower case first
-        // negative sign is okay here as the image is located at
-        // -p.r.p[2]
+      if (elc_params.dielectric_contrast_on) {
+        if (part[i].r.p[2] < elc_params.space_layer) { // handle the lower case first
+          // negative sign is okay here as the image is located at
+          // -part[i].r.p[2]
 
-        e = exp(-omega * p.r.p[2]);
+          e = exp(-omega * part[i].r.p[2]);
 
-        scale = p.p.q * elc_params.delta_mid_bot;
+          scale = part[i].p.q * elc_params.delta_mid_bot;
 
-        lclimgebot[POQESM] = sccache[o + ic].s / e;
-        lclimgebot[POQESP] = sccache[o + ic].s * e;
-        lclimgebot[POQECM] = sccache[o + ic].c / e;
-        lclimgebot[POQECP] = sccache[o + ic].c * e;
+          lclimgebot[POQESM] = sccache[o + ic].s / e;
+          lclimgebot[POQESP] = sccache[o + ic].s * e;
+          lclimgebot[POQECM] = sccache[o + ic].c / e;
+          lclimgebot[POQECP] = sccache[o + ic].c * e;
 
-        addscale_vec(gblcblk, scale, lclimgebot, gblcblk, size);
+          addscale_vec(gblcblk, scale, lclimgebot, gblcblk, size);
 
-        e = (exp(omega * (-p.r.p[2] - 2 * elc_params.h)) *
-             elc_params.delta_mid_bot +
-             exp(omega * (p.r.p[2] - 2 * elc_params.h))) *
-            fac_delta;
+          e = (exp(omega * (-part[i].r.p[2] - 2 * elc_params.h)) *
+               elc_params.delta_mid_bot +
+               exp(omega * (part[i].r.p[2] - 2 * elc_params.h))) *
+              fac_delta;
 
-      } else {
+        } else {
 
-        e = (exp(omega * (-p.r.p[2])) +
-             exp(omega * (p.r.p[2] - 2 * elc_params.h)) *
-             elc_params.delta_mid_top) *
-            fac_delta_mid_bot;
+          e = (exp(omega * (-part[i].r.p[2])) +
+               exp(omega * (part[i].r.p[2] - 2 * elc_params.h)) *
+               elc_params.delta_mid_top) *
+              fac_delta_mid_bot;
+        }
+
+        lclimge[POQESP] += part[i].p.q * sccache[o + ic].s * e;
+        lclimge[POQECP] += part[i].p.q * sccache[o + ic].c * e;
+
+        if (part[i].r.p[2] > (elc_params.h -
+                              elc_params.space_layer)) { // handle the upper case now
+
+          e = exp(omega * (2 * elc_params.h - part[i].r.p[2]));
+
+          scale = part[i].p.q * elc_params.delta_mid_top;
+
+          lclimgetop[POQESM] = sccache[o + ic].s / e;
+          lclimgetop[POQESP] = sccache[o + ic].s * e;
+          lclimgetop[POQECM] = sccache[o + ic].c / e;
+          lclimgetop[POQECP] = sccache[o + ic].c * e;
+
+          addscale_vec(gblcblk, scale, lclimgetop, gblcblk, size);
+
+          e = (exp(omega * (part[i].r.p[2] - 4 * elc_params.h)) *
+               elc_params.delta_mid_top +
+               exp(omega * (-part[i].r.p[2] - 2 * elc_params.h))) *
+              fac_delta;
+
+        } else {
+
+          e = (exp(omega * (+part[i].r.p[2] - 2 * elc_params.h)) +
+               exp(omega * (-part[i].r.p[2] - 2 * elc_params.h)) *
+               elc_params.delta_mid_bot) *
+              fac_delta_mid_top;
+        }
+
+        lclimge[POQESM] += part[i].p.q * sccache[o + ic].s * e;
+        lclimge[POQECM] += part[i].p.q * sccache[o + ic].c * e;
       }
 
-      lclimge[POQESP] += p.p.q * sccache[o + ic].s * e;
-      lclimge[POQECP] += p.p.q * sccache[o + ic].c * e;
-
-      if (p.r.p[2] > (elc_params.h -
-                      elc_params.space_layer)) { // handle the upper case now
-
-        e = exp(omega * (2 * elc_params.h - p.r.p[2]));
-
-        scale = p.p.q * elc_params.delta_mid_top;
-
-        lclimgetop[POQESM] = sccache[o + ic].s / e;
-        lclimgetop[POQESP] = sccache[o + ic].s * e;
-        lclimgetop[POQECM] = sccache[o + ic].c / e;
-        lclimgetop[POQECP] = sccache[o + ic].c * e;
-
-        addscale_vec(gblcblk, scale, lclimgetop, gblcblk, size);
-
-        e = (exp(omega * (p.r.p[2] - 4 * elc_params.h)) *
-             elc_params.delta_mid_top +
-             exp(omega * (-p.r.p[2] - 2 * elc_params.h))) *
-            fac_delta;
-
-      } else {
-
-        e = (exp(omega * (+p.r.p[2] - 2 * elc_params.h)) +
-             exp(omega * (-p.r.p[2] - 2 * elc_params.h)) *
-             elc_params.delta_mid_bot) *
-            fac_delta_mid_top;
-      }
-
-      lclimge[POQESM] += p.p.q * sccache[o + ic].s * e;
-      lclimge[POQECM] += p.p.q * sccache[o + ic].c * e;
+      ic++;
     }
 
-    ic++;
+    /*
+
+    int counter = 0, c1 = 0;
+
+    for (auto const &p : local_cells.particles()) {
+      counter++;
+    }
+
+    for (int c = 1; c <= n_layers; c++) {
+      auto const np = cells[c].n;
+      auto part = cells[c].part;
+      runtimeErrorMsg() << "TTT " << np;
+      for (int i = 0; i < np; i++) {
+        c1++;
+      }
+    }
+
+
+    runtimeErrorMsg() << counter << " " << c1;
+    */
   }
 
   scale_vec(pref, gblcblk, size);
@@ -694,16 +756,20 @@ static void add_force() {
   int size = 4;
 
   ic = 0;
-  for (auto &p : local_cells.particles()) {
-    p.f.f[dir] += p.p.q * (partblk[size * ic + POQESM] * gblcblk[POQECP] -
-                           partblk[size * ic + POQECM] * gblcblk[POQESP] +
-                           partblk[size * ic + POQESP] * gblcblk[POQECM] -
-                           partblk[size * ic + POQECP] * gblcblk[POQESM]);
-    p.f.f[2] += p.p.q * (partblk[size * ic + POQECM] * gblcblk[POQECP] +
-                         partblk[size * ic + POQESM] * gblcblk[POQESP] -
-                         partblk[size * ic + POQECP] * gblcblk[POQECM] -
-                         partblk[size * ic + POQESP] * gblcblk[POQESM]);
-    ic++;
+  for (int c = 1; c <= n_layers; c++) {
+    auto const np = cells[c].n;
+    auto part = cells[c].part;
+    for (int i = 0; i < np; i++) {
+      part[i].f.f[dir] += part[i].p.q * (partblk[size * ic + POQESM] * gblcblk[POQECP] -
+                                         partblk[size * ic + POQECM] * gblcblk[POQESP] +
+                                         partblk[size * ic + POQESP] * gblcblk[POQECM] -
+                                         partblk[size * ic + POQECP] * gblcblk[POQESM]);
+      part[i].f.f[2] += part[i].p.q * (partblk[size * ic + POQECM] * gblcblk[POQECP] +
+                                       partblk[size * ic + POQESM] * gblcblk[POQESP] -
+                                       partblk[size * ic + POQECP] * gblcblk[POQECM] -
+                                       partblk[size * ic + POQESP] * gblcblk[POQESM]);
+      ic++;
+    }
   }
 }
 
@@ -722,12 +788,16 @@ static double dir_energy(double omega) {
 
   int ic = 0;
 
-  for (auto &p : local_cells.particles()) {
-    eng += pref * p.p.q * (partblk[size * ic + POQECM] * gblcblk[POQECP] +
-                           partblk[size * ic + POQESM] * gblcblk[POQESP] +
-                           partblk[size * ic + POQECP] * gblcblk[POQECM] +
-                           partblk[size * ic + POQESP] * gblcblk[POQESM]);
-    ic++;
+  for (int c = 1; c <= n_layers; c++) {
+    auto const np = cells[c].n;
+    auto part = cells[c].part;
+    for (int i = 0; i < np; i++) {
+      eng += pref * part[i].p.q * (partblk[size * ic + POQECM] * gblcblk[POQECP] +
+                                   partblk[size * ic + POQESM] * gblcblk[POQESP] +
+                                   partblk[size * ic + POQECP] * gblcblk[POQECM] +
+                                   partblk[size * ic + POQESP] * gblcblk[POQESM]);
+      ic++;
+    }
   }
 
   return eng;
@@ -760,104 +830,108 @@ static void setup_PQ(int p, int q, double omega) {
   clear_vec(gblcblk, size);
 
   ic = 0;
-  for (auto &p : local_cells.particles()) {
-    double e = exp(omega * p.r.p[2]);
+  for (int c = 1; c <= n_layers; c++) {
+    auto const np = cells[c].n;
+    auto part = cells[c].part;
+    for (int i = 0; i < np; i++) {
+      double e = exp(omega * part[i].r.p[2]);
 
-    partblk[size * ic + PQESSM] =
-            scxcache[ox + ic].s * scycache[oy + ic].s / e;
-    partblk[size * ic + PQESCM] =
-            scxcache[ox + ic].s * scycache[oy + ic].c / e;
-    partblk[size * ic + PQECSM] =
-            scxcache[ox + ic].c * scycache[oy + ic].s / e;
-    partblk[size * ic + PQECCM] =
-            scxcache[ox + ic].c * scycache[oy + ic].c / e;
+      partblk[size * ic + PQESSM] =
+              scxcache[ox + ic].s * scycache[oy + ic].s / e;
+      partblk[size * ic + PQESCM] =
+              scxcache[ox + ic].s * scycache[oy + ic].c / e;
+      partblk[size * ic + PQECSM] =
+              scxcache[ox + ic].c * scycache[oy + ic].s / e;
+      partblk[size * ic + PQECCM] =
+              scxcache[ox + ic].c * scycache[oy + ic].c / e;
 
-    partblk[size * ic + PQESSP] =
-            scxcache[ox + ic].s * scycache[oy + ic].s * e;
-    partblk[size * ic + PQESCP] =
-            scxcache[ox + ic].s * scycache[oy + ic].c * e;
-    partblk[size * ic + PQECSP] =
-            scxcache[ox + ic].c * scycache[oy + ic].s * e;
-    partblk[size * ic + PQECCP] =
-            scxcache[ox + ic].c * scycache[oy + ic].c * e;
+      partblk[size * ic + PQESSP] =
+              scxcache[ox + ic].s * scycache[oy + ic].s * e;
+      partblk[size * ic + PQESCP] =
+              scxcache[ox + ic].s * scycache[oy + ic].c * e;
+      partblk[size * ic + PQECSP] =
+              scxcache[ox + ic].c * scycache[oy + ic].s * e;
+      partblk[size * ic + PQECCP] =
+              scxcache[ox + ic].c * scycache[oy + ic].c * e;
 
-    addscale_vec(gblcblk, p.p.q, block(partblk, ic, size), gblcblk, size);
+      addscale_vec(gblcblk, part[i].p.q, block(partblk, ic, size), gblcblk, size);
 
-    if (elc_params.dielectric_contrast_on) {
-      if (p.r.p[2] < elc_params.space_layer) { // handle the lower case first
-        // change e to take into account the z position of the images
+      if (elc_params.dielectric_contrast_on) {
+        if (part[i].r.p[2] < elc_params.space_layer) { // handle the lower case first
+          // change e to take into account the z position of the images
 
-        e = exp(-omega * p.r.p[2]);
-        scale = p.p.q * elc_params.delta_mid_bot;
+          e = exp(-omega * part[i].r.p[2]);
+          scale = part[i].p.q * elc_params.delta_mid_bot;
 
-        lclimgebot[PQESSM] = scxcache[ox + ic].s * scycache[oy + ic].s / e;
-        lclimgebot[PQESCM] = scxcache[ox + ic].s * scycache[oy + ic].c / e;
-        lclimgebot[PQECSM] = scxcache[ox + ic].c * scycache[oy + ic].s / e;
-        lclimgebot[PQECCM] = scxcache[ox + ic].c * scycache[oy + ic].c / e;
+          lclimgebot[PQESSM] = scxcache[ox + ic].s * scycache[oy + ic].s / e;
+          lclimgebot[PQESCM] = scxcache[ox + ic].s * scycache[oy + ic].c / e;
+          lclimgebot[PQECSM] = scxcache[ox + ic].c * scycache[oy + ic].s / e;
+          lclimgebot[PQECCM] = scxcache[ox + ic].c * scycache[oy + ic].c / e;
 
-        lclimgebot[PQESSP] = scxcache[ox + ic].s * scycache[oy + ic].s * e;
-        lclimgebot[PQESCP] = scxcache[ox + ic].s * scycache[oy + ic].c * e;
-        lclimgebot[PQECSP] = scxcache[ox + ic].c * scycache[oy + ic].s * e;
-        lclimgebot[PQECCP] = scxcache[ox + ic].c * scycache[oy + ic].c * e;
+          lclimgebot[PQESSP] = scxcache[ox + ic].s * scycache[oy + ic].s * e;
+          lclimgebot[PQESCP] = scxcache[ox + ic].s * scycache[oy + ic].c * e;
+          lclimgebot[PQECSP] = scxcache[ox + ic].c * scycache[oy + ic].s * e;
+          lclimgebot[PQECCP] = scxcache[ox + ic].c * scycache[oy + ic].c * e;
 
-        addscale_vec(gblcblk, scale, lclimgebot, gblcblk, size);
+          addscale_vec(gblcblk, scale, lclimgebot, gblcblk, size);
 
-        e = (exp(omega * (-p.r.p[2] - 2 * elc_params.h)) *
-             elc_params.delta_mid_bot +
-             exp(omega * (p.r.p[2] - 2 * elc_params.h))) *
-            fac_delta * p.p.q;
+          e = (exp(omega * (-part[i].r.p[2] - 2 * elc_params.h)) *
+               elc_params.delta_mid_bot +
+               exp(omega * (part[i].r.p[2] - 2 * elc_params.h))) *
+              fac_delta * part[i].p.q;
 
-      } else {
+        } else {
 
-        e = (exp(omega * (-p.r.p[2])) +
-             exp(omega * (p.r.p[2] - 2 * elc_params.h)) *
-             elc_params.delta_mid_top) *
-            fac_delta_mid_bot * p.p.q;
+          e = (exp(omega * (-part[i].r.p[2])) +
+               exp(omega * (part[i].r.p[2] - 2 * elc_params.h)) *
+               elc_params.delta_mid_top) *
+              fac_delta_mid_bot * part[i].p.q;
+        }
+
+        lclimge[PQESSP] += scxcache[ox + ic].s * scycache[oy + ic].s * e;
+        lclimge[PQESCP] += scxcache[ox + ic].s * scycache[oy + ic].c * e;
+        lclimge[PQECSP] += scxcache[ox + ic].c * scycache[oy + ic].s * e;
+        lclimge[PQECCP] += scxcache[ox + ic].c * scycache[oy + ic].c * e;
+
+        if (part[i].r.p[2] > (elc_params.h -
+                              elc_params.space_layer)) { // handle the upper case now
+
+          e = exp(omega * (2 * elc_params.h - part[i].r.p[2]));
+          scale = part[i].p.q * elc_params.delta_mid_top;
+
+          lclimgetop[PQESSM] = scxcache[ox + ic].s * scycache[oy + ic].s / e;
+          lclimgetop[PQESCM] = scxcache[ox + ic].s * scycache[oy + ic].c / e;
+          lclimgetop[PQECSM] = scxcache[ox + ic].c * scycache[oy + ic].s / e;
+          lclimgetop[PQECCM] = scxcache[ox + ic].c * scycache[oy + ic].c / e;
+
+          lclimgetop[PQESSP] = scxcache[ox + ic].s * scycache[oy + ic].s * e;
+          lclimgetop[PQESCP] = scxcache[ox + ic].s * scycache[oy + ic].c * e;
+          lclimgetop[PQECSP] = scxcache[ox + ic].c * scycache[oy + ic].s * e;
+          lclimgetop[PQECCP] = scxcache[ox + ic].c * scycache[oy + ic].c * e;
+
+          addscale_vec(gblcblk, scale, lclimgetop, gblcblk, size);
+
+          e = (exp(omega * (part[i].r.p[2] - 4 * elc_params.h)) *
+               elc_params.delta_mid_top +
+               exp(omega * (-part[i].r.p[2] - 2 * elc_params.h))) *
+              fac_delta * part[i].p.q;
+
+        } else {
+
+          e = (exp(omega * (part[i].r.p[2] - 2 * elc_params.h)) +
+               exp(omega * (-part[i].r.p[2] - 2 * elc_params.h)) *
+               elc_params.delta_mid_bot) *
+              fac_delta_mid_top * part[i].p.q;
+        }
+
+        lclimge[PQESSM] += scxcache[ox + ic].s * scycache[oy + ic].s * e;
+        lclimge[PQESCM] += scxcache[ox + ic].s * scycache[oy + ic].c * e;
+        lclimge[PQECSM] += scxcache[ox + ic].c * scycache[oy + ic].s * e;
+        lclimge[PQECCM] += scxcache[ox + ic].c * scycache[oy + ic].c * e;
       }
 
-      lclimge[PQESSP] += scxcache[ox + ic].s * scycache[oy + ic].s * e;
-      lclimge[PQESCP] += scxcache[ox + ic].s * scycache[oy + ic].c * e;
-      lclimge[PQECSP] += scxcache[ox + ic].c * scycache[oy + ic].s * e;
-      lclimge[PQECCP] += scxcache[ox + ic].c * scycache[oy + ic].c * e;
-
-      if (p.r.p[2] > (elc_params.h -
-                      elc_params.space_layer)) { // handle the upper case now
-
-        e = exp(omega * (2 * elc_params.h - p.r.p[2]));
-        scale = p.p.q * elc_params.delta_mid_top;
-
-        lclimgetop[PQESSM] = scxcache[ox + ic].s * scycache[oy + ic].s / e;
-        lclimgetop[PQESCM] = scxcache[ox + ic].s * scycache[oy + ic].c / e;
-        lclimgetop[PQECSM] = scxcache[ox + ic].c * scycache[oy + ic].s / e;
-        lclimgetop[PQECCM] = scxcache[ox + ic].c * scycache[oy + ic].c / e;
-
-        lclimgetop[PQESSP] = scxcache[ox + ic].s * scycache[oy + ic].s * e;
-        lclimgetop[PQESCP] = scxcache[ox + ic].s * scycache[oy + ic].c * e;
-        lclimgetop[PQECSP] = scxcache[ox + ic].c * scycache[oy + ic].s * e;
-        lclimgetop[PQECCP] = scxcache[ox + ic].c * scycache[oy + ic].c * e;
-
-        addscale_vec(gblcblk, scale, lclimgetop, gblcblk, size);
-
-        e = (exp(omega * (p.r.p[2] - 4 * elc_params.h)) *
-             elc_params.delta_mid_top +
-             exp(omega * (-p.r.p[2] - 2 * elc_params.h))) *
-            fac_delta * p.p.q;
-
-      } else {
-
-        e = (exp(omega * (p.r.p[2] - 2 * elc_params.h)) +
-             exp(omega * (-p.r.p[2] - 2 * elc_params.h)) *
-             elc_params.delta_mid_bot) *
-            fac_delta_mid_top * p.p.q;
-      }
-
-      lclimge[PQESSM] += scxcache[ox + ic].s * scycache[oy + ic].s * e;
-      lclimge[PQESCM] += scxcache[ox + ic].s * scycache[oy + ic].c * e;
-      lclimge[PQECSM] += scxcache[ox + ic].c * scycache[oy + ic].s * e;
-      lclimge[PQECCM] += scxcache[ox + ic].c * scycache[oy + ic].c * e;
+      ic++;
     }
-
-    ic++;
   }
 
   scale_vec(pref, gblcblk, size);
@@ -875,32 +949,38 @@ static void add_PQ_force(int p, int q, double omega) {
   int size = 8;
 
   ic = 0;
-  for (auto &p : local_cells.particles()) {
-    p.f.f[0] += pref_x * p.p.q * (partblk[size * ic + PQESCM] * gblcblk[PQECCP] +
-                                  partblk[size * ic + PQESSM] * gblcblk[PQECSP] -
-                                  partblk[size * ic + PQECCM] * gblcblk[PQESCP] -
-                                  partblk[size * ic + PQECSM] * gblcblk[PQESSP] +
-                                  partblk[size * ic + PQESCP] * gblcblk[PQECCM] +
-                                  partblk[size * ic + PQESSP] * gblcblk[PQECSM] -
-                                  partblk[size * ic + PQECCP] * gblcblk[PQESCM] -
-                                  partblk[size * ic + PQECSP] * gblcblk[PQESSM]);
-    p.f.f[1] += pref_y * p.p.q * (partblk[size * ic + PQECSM] * gblcblk[PQECCP] +
-                                  partblk[size * ic + PQESSM] * gblcblk[PQESCP] -
-                                  partblk[size * ic + PQECCM] * gblcblk[PQECSP] -
-                                  partblk[size * ic + PQESCM] * gblcblk[PQESSP] +
-                                  partblk[size * ic + PQECSP] * gblcblk[PQECCM] +
-                                  partblk[size * ic + PQESSP] * gblcblk[PQESCM] -
-                                  partblk[size * ic + PQECCP] * gblcblk[PQECSM] -
-                                  partblk[size * ic + PQESCP] * gblcblk[PQESSM]);
-    p.f.f[2] += p.p.q * (partblk[size * ic + PQECCM] * gblcblk[PQECCP] +
-                         partblk[size * ic + PQECSM] * gblcblk[PQECSP] +
-                         partblk[size * ic + PQESCM] * gblcblk[PQESCP] +
-                         partblk[size * ic + PQESSM] * gblcblk[PQESSP] -
-                         partblk[size * ic + PQECCP] * gblcblk[PQECCM] -
-                         partblk[size * ic + PQECSP] * gblcblk[PQECSM] -
-                         partblk[size * ic + PQESCP] * gblcblk[PQESCM] -
-                         partblk[size * ic + PQESSP] * gblcblk[PQESSM]);
-    ic++;
+  for (int c = 1; c <= n_layers; c++) {
+    auto const np = cells[c].n;
+    auto part = cells[c].part;
+    for (int i = 0; i < np; i++) {
+      part[i].f.f[0] +=
+              pref_x * part[i].p.q * (partblk[size * ic + PQESCM] * gblcblk[PQECCP] +
+                                      partblk[size * ic + PQESSM] * gblcblk[PQECSP] -
+                                      partblk[size * ic + PQECCM] * gblcblk[PQESCP] -
+                                      partblk[size * ic + PQECSM] * gblcblk[PQESSP] +
+                                      partblk[size * ic + PQESCP] * gblcblk[PQECCM] +
+                                      partblk[size * ic + PQESSP] * gblcblk[PQECSM] -
+                                      partblk[size * ic + PQECCP] * gblcblk[PQESCM] -
+                                      partblk[size * ic + PQECSP] * gblcblk[PQESSM]);
+      part[i].f.f[1] +=
+              pref_y * part[i].p.q * (partblk[size * ic + PQECSM] * gblcblk[PQECCP] +
+                                      partblk[size * ic + PQESSM] * gblcblk[PQESCP] -
+                                      partblk[size * ic + PQECCM] * gblcblk[PQECSP] -
+                                      partblk[size * ic + PQESCM] * gblcblk[PQESSP] +
+                                      partblk[size * ic + PQECSP] * gblcblk[PQECCM] +
+                                      partblk[size * ic + PQESSP] * gblcblk[PQESCM] -
+                                      partblk[size * ic + PQECCP] * gblcblk[PQECSM] -
+                                      partblk[size * ic + PQESCP] * gblcblk[PQESSM]);
+      part[i].f.f[2] += part[i].p.q * (partblk[size * ic + PQECCM] * gblcblk[PQECCP] +
+                                       partblk[size * ic + PQECSM] * gblcblk[PQECSP] +
+                                       partblk[size * ic + PQESCM] * gblcblk[PQESCP] +
+                                       partblk[size * ic + PQESSM] * gblcblk[PQESSP] -
+                                       partblk[size * ic + PQECCP] * gblcblk[PQECCM] -
+                                       partblk[size * ic + PQECSP] * gblcblk[PQECSM] -
+                                       partblk[size * ic + PQESCP] * gblcblk[PQESCM] -
+                                       partblk[size * ic + PQESSP] * gblcblk[PQESSM]);
+      ic++;
+    }
   }
 }
 
@@ -910,16 +990,20 @@ static double PQ_energy(double omega) {
   double pref = 1 / omega;
 
   int ic = 0;
-  for (auto &p : local_cells.particles()) {
-    eng += pref * p.p.q * (partblk[size * ic + PQECCM] * gblcblk[PQECCP] +
-                           partblk[size * ic + PQECSM] * gblcblk[PQECSP] +
-                           partblk[size * ic + PQESCM] * gblcblk[PQESCP] +
-                           partblk[size * ic + PQESSM] * gblcblk[PQESSP] +
-                           partblk[size * ic + PQECCP] * gblcblk[PQECCM] +
-                           partblk[size * ic + PQECSP] * gblcblk[PQECSM] +
-                           partblk[size * ic + PQESCP] * gblcblk[PQESCM] +
-                           partblk[size * ic + PQESSP] * gblcblk[PQESSM]);
-    ic++;
+  for (int c = 1; c <= n_layers; c++) {
+    auto const np = cells[c].n;
+    auto part = cells[c].part;
+    for (int i = 0; i < np; i++) {
+      eng += pref * part[i].p.q * (partblk[size * ic + PQECCM] * gblcblk[PQECCP] +
+                                   partblk[size * ic + PQECSM] * gblcblk[PQECSP] +
+                                   partblk[size * ic + PQESCM] * gblcblk[PQESCP] +
+                                   partblk[size * ic + PQESSM] * gblcblk[PQESSP] +
+                                   partblk[size * ic + PQECCP] * gblcblk[PQECCM] +
+                                   partblk[size * ic + PQECSP] * gblcblk[PQECSM] +
+                                   partblk[size * ic + PQESCP] * gblcblk[PQESCM] +
+                                   partblk[size * ic + PQESSP] * gblcblk[PQESSM]);
+      ic++;
+    }
   }
   return eng;
 }
