@@ -27,6 +27,14 @@
 #define PQESCM 5
 #define PQECSM 6
 #define PQECCM 7
+
+const std::vector<int> POIndex = {POQECM, POQESM, POQECP, POQESP};
+const std::vector<int> POIndexSecond = {POQECP, POQESP, POQECM, POQESM};
+const std::vector<int> POIndexForce = {POQESM, POQESP, POQECM, POQECP};
+
+const std::vector<int> PQIndex = {PQESSP, PQESCP, PQECSP, PQECCP, PQESSM, PQESCM, PQECSM, PQECCM};
+const std::vector<int> PQIndexSecond = {PQECSM, PQECCM, PQESSM, PQESCM, PQECSP, PQECCP, PQESSP, PQESCP};
+const std::vector<int> PQIndexYForce = {PQESSP, PQECSP, PQESCP, PQECCP, PQESCM, PQECCM, PQESSM, PQECSM};
 /*@}*/
 
 /** inverse box dimensions */
@@ -53,28 +61,33 @@ static void elc_mmm2d_common_init_invBoxl() {
 
 /*@}*/
 
+template<typename Iter1, typename Iter2>
+static double helper_first(int position, const double *partblk, const double *gblcblk, Iter1 partIter, Iter2 gblIter,
+                           bool sum) {
+  double partSum[2] = {0, 0};
+
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 2; ++j) {
+      partSum[i] += partblk[position + *(partIter++)] * gblcblk[*(gblIter++)];
+    }
+  }
+
+  return sum ? partSum[0] + partSum[1] : partSum[0] - partSum[1];
+}
 
 inline double
 elc_mmm2d_common_add_force_dir(int position, const double *partblk, const double *gblcblk) {
-  return partblk[position + POQESM] * gblcblk[POQECP] -
-         partblk[position + POQECM] * gblcblk[POQESP] +
-         partblk[position + POQESP] * gblcblk[POQECM] -
-         partblk[position + POQECP] * gblcblk[POQESM];
+  return helper_first(position, partblk, gblcblk, POIndexForce.begin(), POIndexForce.rbegin(), false);
 }
-
-
-double helper_first(int position, const double *partblk, const double *gblcblk, bool sum);
-
-double helper_second(int position, const double *partblk, const double *gblcblk, bool sum);
 
 inline double
 elc_mmm2d_common_add_force_z(int position, const double *partblk, const double *gblcblk) {
-  return helper_first(position, partblk, gblcblk, false);
+  return helper_first(position, partblk, gblcblk, POIndex.begin(), POIndexSecond.begin(), false);
 }
 
 inline double
 elc_mmm2d_common_dir_energy(int position, const double *partblk, const double *gblcblk) {
-  return helper_first(position, partblk, gblcblk, true);
+  return helper_first(position, partblk, gblcblk, POIndex.begin(), POIndexSecond.begin(), true);
 }
 
 inline void
@@ -101,36 +114,28 @@ elc_mmm2d_common_PQ_setup(int position, int xCacheOffset, int yCacheOffset, doub
 
 inline double
 elc_mmm2d_common_add_PQ_force_x(int position, const double *partblk, const double *gblcblk) {
-  return partblk[position + PQESCM] * gblcblk[PQECCP] +
-         partblk[position + PQESSM] * gblcblk[PQECSP] -
-         partblk[position + PQECCM] * gblcblk[PQESCP] -
-         partblk[position + PQECSM] * gblcblk[PQESSP] +
-         partblk[position + PQESCP] * gblcblk[PQECCM] +
-         partblk[position + PQESSP] * gblcblk[PQECSM] -
-         partblk[position + PQECCP] * gblcblk[PQESCM] -
-         partblk[position + PQECSP] * gblcblk[PQESSM];
+  return helper_first(position, partblk, gblcblk, PQIndex.begin(), PQIndexSecond.begin(), false) +
+         helper_first(position, partblk, gblcblk, PQIndex.begin() + 4, PQIndexSecond.begin() + 4, false);
 }
+
 
 inline double
 elc_mmm2d_common_add_PQ_force_y(int position, const double *partblk, const double *gblcblk) {
-  return partblk[position + PQECSM] * gblcblk[PQECCP] +
-         partblk[position + PQESSM] * gblcblk[PQESCP] -
-         partblk[position + PQECCM] * gblcblk[PQECSP] -
-         partblk[position + PQESCM] * gblcblk[PQESSP] +
-         partblk[position + PQECSP] * gblcblk[PQECCM] +
-         partblk[position + PQESSP] * gblcblk[PQESCM] -
-         partblk[position + PQECCP] * gblcblk[PQECSM] -
-         partblk[position + PQESCP] * gblcblk[PQESSM];
+  return helper_first(position, partblk, gblcblk, PQIndexYForce.begin(), PQIndexYForce.begin() + 4, false) -
+         helper_first(position, partblk, gblcblk, PQIndexYForce.begin() + 4, PQIndexYForce.begin(), false);
 }
+
 
 inline double
 elc_mmm2d_common_add_PQ_force_z(int position, const double *partblk, const double *gblcblk) {
-  return helper_second(position, partblk, gblcblk, false);
+  return helper_first(position, partblk, gblcblk, PQIndex.begin() + 4, PQIndex.begin(), true) -
+         helper_first(position, partblk, gblcblk, PQIndex.begin(), PQIndex.begin() + 4, true);
 }
 
 inline double
 elc_mmm2d_common_PQ_energy(int position, const double *partblk, const double *gblcblk) {
-  return helper_second(position, partblk, gblcblk, true);
+  return helper_first(position, partblk, gblcblk, PQIndex.begin() + 4, PQIndex.begin(), true) +
+         helper_first(position, partblk, gblcblk, PQIndex.begin(), PQIndex.begin() + 4, true);
 }
 
 inline void
