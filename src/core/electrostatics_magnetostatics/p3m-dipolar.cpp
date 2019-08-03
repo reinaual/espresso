@@ -408,13 +408,13 @@ void dp3m_init() {
 
 void dp3m_free_dipoles() {
   for (auto &i : dp3m.rs_mesh_dip)
-    i.clear();
-  dp3m.ca_frac.clear();
-  dp3m.ca_fmp.clear();
-  dp3m.send_grid.clear();
-  dp3m.recv_grid.clear();
+    i.resize(0);
+  dp3m.ca_frac.resize(0);
+  dp3m.ca_fmp.resize(0);
+  dp3m.send_grid.resize(0);
+  dp3m.recv_grid.resize(0);
   free(dp3m.rs_mesh);
-  dp3m.ks_mesh.clear();
+  dp3m.ks_mesh.resize(0);
 }
 
 double dp3m_average_dipolar_self_energy(double box_l, int mesh) {
