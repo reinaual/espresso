@@ -357,9 +357,8 @@ void calc_rdf_av(PartCfg &partCfg, int const *p1_types, int n_p1,
   int mixed_flag = 0;
   double inv_bin_width = 0.0, bin_width = 0.0;
   double volume, bin_volume, r_in, r_out;
-  double *rdf_tmp;
 
-  rdf_tmp = (double *)Utils::malloc(r_bins * sizeof(double));
+  std::vector<double> rdf_tmp(r_bins);
 
   if (n_p1 == n_p2) {
     for (int i = 0; i < n_p1; i++)
@@ -429,7 +428,6 @@ void calc_rdf_av(PartCfg &partCfg, int const *p1_types, int n_p1,
   for (int i = 0; i < r_bins; i++) {
     rdf[i] /= (cnt_conf - 1);
   }
-  free(rdf_tmp);
 }
 
 std::vector<double> calc_structurefactor(PartCfg &partCfg, int const *p_types,
