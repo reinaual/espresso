@@ -44,14 +44,14 @@
 static int n_s_buffer = 0;
 static int max_s_buffer = 0;
 /** send buffer. Just grows, which should be ok */
-static char *s_buffer = nullptr;
+static std::vector<char> s_buffer;
 
 std::vector<int> s_bondbuffer;
 
 static int n_r_buffer = 0;
 static int max_r_buffer = 0;
 /** recv buffer. Just grows, which should be ok */
-static char *r_buffer = nullptr;
+static std::vector<char> r_buffer;
 
 std::vector<int> r_bondbuffer;
 
@@ -136,14 +136,14 @@ void prepare_send_buffer(GhostCommunication *gc, int data_parts) {
   n_s_buffer = calc_transmit_size(gc, data_parts);
   if (n_s_buffer > max_s_buffer) {
     max_s_buffer = n_s_buffer;
-    s_buffer = Utils::realloc(s_buffer, max_s_buffer);
+    s_buffer.resize(max_s_buffer);
   }
   GHOST_TRACE(fprintf(stderr, "%d: will send %d\n", this_node, n_s_buffer));
 
   s_bondbuffer.resize(0);
 
   /* put in data */
-  char *insert = s_buffer;
+  char *insert = s_buffer.data();
   for (int pl = 0; pl < gc->n_part_lists; pl++) {
     int np = gc->part_lists[pl]->n;
     if (data_parts & GHOSTTRANS_PARTNUM) {
@@ -212,11 +212,11 @@ void prepare_send_buffer(GhostCommunication *gc, int data_parts) {
     insert += sizeof(int);
   }
 
-  if (insert - s_buffer != n_s_buffer) {
+  if (insert - s_buffer.data() != n_s_buffer) {
     fprintf(stderr,
             "%d: INTERNAL ERROR: send buffer size %d "
             "differs from what I put in (%td)\n",
-            this_node, n_s_buffer, insert - s_buffer);
+            this_node, n_s_buffer, insert - s_buffer.data());
     errexit();
   }
 }
@@ -253,14 +253,14 @@ void prepare_recv_buffer(GhostCommunication *gc, int data_parts) {
   n_r_buffer = calc_transmit_size(gc, data_parts);
   if (n_r_buffer > max_r_buffer) {
     max_r_buffer = n_r_buffer;
-    r_buffer = Utils::realloc(r_buffer, max_r_buffer);
+    r_buffer.resize(max_r_buffer);
   }
   GHOST_TRACE(fprintf(stderr, "%d: will get %d\n", this_node, n_r_buffer));
 }
 
 void put_recv_buffer(GhostCommunication *gc, int data_parts) {
   /* put back data */
-  char *retrieve = r_buffer;
+  char *retrieve = r_buffer.data();
 
   std::vector<int>::const_iterator bond_retrieve = r_bondbuffer.begin();
 
@@ -332,11 +332,11 @@ void put_recv_buffer(GhostCommunication *gc, int data_parts) {
     retrieve += sizeof(int);
   }
 
-  if (retrieve - r_buffer != n_r_buffer) {
+  if (retrieve - r_buffer.data() != n_r_buffer) {
     fprintf(stderr,
             "%d: recv buffer size %d differs "
             "from what I read out (%td)\n",
-            this_node, n_r_buffer, retrieve - r_buffer);
+            this_node, n_r_buffer, retrieve - r_buffer.data());
     errexit();
   }
   if (bond_retrieve != r_bondbuffer.end()) {
@@ -354,7 +354,7 @@ void add_forces_from_recv_buffer(GhostCommunication *gc) {
   char *retrieve;
 
   /* put back data */
-  retrieve = r_buffer;
+  retrieve = r_buffer.data();
   for (pl = 0; pl < gc->n_part_lists; pl++) {
     int np = gc->part_lists[pl]->n;
     part = gc->part_lists[pl]->part;
@@ -364,11 +364,11 @@ void add_forces_from_recv_buffer(GhostCommunication *gc) {
       retrieve += sizeof(ParticleForce);
     }
   }
-  if (retrieve - r_buffer != n_r_buffer) {
+  if (retrieve - r_buffer.data() != n_r_buffer) {
     fprintf(stderr,
             "%d: recv buffer size %d differs "
             "from what I put in %td\n",
-            this_node, n_r_buffer, retrieve - r_buffer);
+            this_node, n_r_buffer, retrieve - r_buffer.data());
     errexit();
   }
 }
@@ -535,10 +535,10 @@ void ghost_communicator(GhostCommunicator *gc, int data_parts) {
         GHOST_TRACE(fprintf(stderr,
                             "%d: ghost_comm receive from %d (%d bytes)\n",
                             this_node, node, n_r_buffer));
-        MPI_Recv(r_buffer, n_r_buffer, MPI_BYTE, node, REQ_GHOST_SEND,
+        MPI_Recv(r_buffer.data(), n_r_buffer, MPI_BYTE, node, REQ_GHOST_SEND,
                  comm_cart, &status);
         if (data_parts & GHOSTTRANS_PROPRTS) {
-          int n_bonds = *(int *)(r_buffer + n_r_buffer - sizeof(int));
+          int n_bonds = *(int *)(r_buffer.data() + n_r_buffer - sizeof(int));
           GHOST_TRACE(fprintf(stderr,
                               "%d: ghost_comm receive from %d (%d bonds)\n",
                               this_node, node, n_bonds));
@@ -553,7 +553,7 @@ void ghost_communicator(GhostCommunicator *gc, int data_parts) {
       case GHOST_SEND: {
         GHOST_TRACE(fprintf(stderr, "%d: ghost_comm send to %d (%d bytes)\n",
                             this_node, node, n_s_buffer));
-        MPI_Send(s_buffer, n_s_buffer, MPI_BYTE, node, REQ_GHOST_SEND,
+        MPI_Send(s_buffer.data(), n_s_buffer, MPI_BYTE, node, REQ_GHOST_SEND,
                  comm_cart);
         int n_bonds = s_bondbuffer.size();
         if (!(data_parts & GHOSTTRANS_PROPRTS) && n_bonds > 0) {
@@ -576,7 +576,7 @@ void ghost_communicator(GhostCommunicator *gc, int data_parts) {
                             this_node, node,
                             (node == this_node) ? n_s_buffer : n_r_buffer));
         if (node == this_node) {
-          MPI_Bcast(s_buffer, n_s_buffer, MPI_BYTE, node, comm_cart);
+          MPI_Bcast(s_buffer.data(), n_s_buffer, MPI_BYTE, node, comm_cart);
           int n_bonds = s_bondbuffer.size();
           if (!(data_parts & GHOSTTRANS_PROPRTS) && n_bonds > 0) {
             fprintf(stderr,
@@ -589,9 +589,9 @@ void ghost_communicator(GhostCommunicator *gc, int data_parts) {
             MPI_Bcast(&s_bondbuffer[0], n_bonds, MPI_INT, node, comm_cart);
           }
         } else {
-          MPI_Bcast(r_buffer, n_r_buffer, MPI_BYTE, node, comm_cart);
+          MPI_Bcast(r_buffer.data(), n_r_buffer, MPI_BYTE, node, comm_cart);
           if (data_parts & GHOSTTRANS_PROPRTS) {
-            int n_bonds = *(int *)(r_buffer + n_r_buffer - sizeof(int));
+            int n_bonds = *(int *)(r_buffer.data() + n_r_buffer - sizeof(int));
             if (n_bonds) {
               r_bondbuffer.resize(n_bonds);
               MPI_Bcast(&r_bondbuffer[0], n_bonds, MPI_INT, node, comm_cart);
@@ -604,12 +604,12 @@ void ghost_communicator(GhostCommunicator *gc, int data_parts) {
                             this_node, node, n_s_buffer));
 
         if (node == this_node)
-          MPI_Reduce(reinterpret_cast<double *>(s_buffer),
-                     reinterpret_cast<double *>(r_buffer),
+          MPI_Reduce(reinterpret_cast<double *>(s_buffer.data()),
+                     reinterpret_cast<double *>(r_buffer.data()),
                      n_s_buffer / sizeof(double), MPI_DOUBLE, MPI_SUM, node,
                      comm_cart);
         else
-          MPI_Reduce(reinterpret_cast<double *>(s_buffer), nullptr,
+          MPI_Reduce(reinterpret_cast<double *>(s_buffer.data()), nullptr,
                      n_s_buffer / sizeof(double), MPI_DOUBLE, MPI_SUM, node,
                      comm_cart);
       } break;
