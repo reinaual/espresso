@@ -122,14 +122,15 @@ enum Resort : unsigned {
 /** List of cell pointers. */
 struct CellPList {
   ParticleRange particles() const {
-    return {CellParticleIterator(cell, cell + n, 0),
-            CellParticleIterator(cell + n, cell + n, 0)};
+    return {CellParticleIterator(cell.data(), cell.data() + n, 0),
+            CellParticleIterator(cell.data() + n, cell.data() + n, 0)};
   }
 
-  Cell **begin() { return cell; }
-  Cell **end() { return cell + n; }
+  Cell **begin() { return cell.data(); }
+  Cell **end() { return cell.data() + n; }
 
-  Cell **cell;
+  std::vector<Cell *> cell;
+
   int n;
   int max;
 };
@@ -224,14 +225,14 @@ void realloc_cells(int size);
 inline void init_cellplist(CellPList *cpl) {
   cpl->n = 0;
   cpl->max = 0;
-  cpl->cell = nullptr;
+  cpl->cell.resize(0);
 }
 
 /** Reallocate a list of cell pointers */
 inline void realloc_cellplist(CellPList *cpl, int size) {
   if (size != cpl->max) {
     cpl->max = size;
-    cpl->cell = (Cell **)Utils::realloc(cpl->cell, sizeof(Cell *) * cpl->max);
+    cpl->cell.resize(cpl->max);
   }
 }
 

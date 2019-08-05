@@ -377,8 +377,7 @@ void mpi_mpiio_common_read(const char *filename, unsigned fields) {
   read_prefs(fnam + ".pref", rank, size, nglobalpart, &pref, &nlocalpart);
 
   // Prepare ESPResSo data structures
-  local_particles =
-      Utils::realloc(local_particles, sizeof(Particle *) * nglobalpart);
+  local_particles.resize(nglobalpart);
   for (int i = 0; i < nglobalpart; ++i)
     local_particles[i] = nullptr;
   n_part = nglobalpart;
