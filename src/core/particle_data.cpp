@@ -445,7 +445,7 @@ bool swimming_particles_exist = false;
 std::unordered_map<int, int> particle_node;
 
 int max_local_particles = 0;
-std::vector<Particle *> local_particles;
+Particle **local_particles = nullptr;
 
 /************************************************
  * local functions
@@ -550,9 +550,13 @@ void realloc_local_particles(int part) {
   if (part >= max_local_particles) {
     /* round up part + 1 in granularity PART_INCREMENT */
     max_local_particles =
-            PART_INCREMENT * ((part + PART_INCREMENT) / PART_INCREMENT);
-    /* resize with new memory set to 0 */
-    local_particles.resize(max_local_particles, nullptr);
+        PART_INCREMENT * ((part + PART_INCREMENT) / PART_INCREMENT);
+    local_particles = Utils::realloc(local_particles,
+                                     sizeof(Particle *) * max_local_particles);
+
+    /* Set new memory to 0 */
+    for (int i = (max_seen_particle + 1); i < max_local_particles; i++)
+      local_particles[i] = nullptr;
   }
 }
 
@@ -1206,7 +1210,7 @@ void local_remove_all_particles() {
   int c;
   n_part = 0;
   max_seen_particle = -1;
-  std::fill(local_particles.data(), local_particles.data() + max_local_particles, nullptr);
+  std::fill(local_particles, local_particles + max_local_particles, nullptr);
 
   for (c = 0; c < local_cells.n; c++) {
     Particle *p;

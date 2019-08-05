@@ -54,9 +54,9 @@
 std::vector<Cell> cells;
 /** list of pointers to all cells containing particles physically on the local
  * node. */
-CellPList local_cells = {std::vector<Cell *> {}, 0, 0};
+CellPList local_cells = {nullptr, 0, 0};
 /** list of pointers to all cells containing ghosts. */
-CellPList ghost_cells = {std::vector<Cell *> {}, 0, 0};
+CellPList ghost_cells = {nullptr, 0, 0};
 
 /** Type of cell structure in use */
 CellStructure cell_structure;

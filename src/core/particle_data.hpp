@@ -469,7 +469,7 @@ extern bool swimming_particles_exist;
 
 /** id->particle mapping on all nodes. This is used to find partners
     of bonded interactions. */
-extern std::vector<Particle *> local_particles;
+extern Particle **local_particles;
 extern int max_local_particles;
 
 /************************************************
