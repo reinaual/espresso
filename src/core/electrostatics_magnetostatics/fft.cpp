@@ -79,8 +79,7 @@ namespace {
  */
 boost::optional<std::vector<int>>
 find_comm_groups(Utils::Vector3i const &grid1, Utils::Vector3i const &grid2,
-                 const std::vector<int> &node_list1, std::vector<int> &node_list2,
-                 std::vector<int> &pos, int *my_pos,
+                 int const *node_list1, int *node_list2, int *pos, int *my_pos,
                  boost::mpi::communicator const &comm) {
   int i;
   /* communication group cell size on grid1 and grid2 */
@@ -550,7 +549,7 @@ int fft_init(double **data, int const *ca_mesh_dim, int const *ca_mesh_margin,
     auto group =
         find_comm_groups({n_grid[i - 1][0], n_grid[i - 1][1], n_grid[i - 1][2]},
                          {n_grid[i][0], n_grid[i][1], n_grid[i][2]},
-                         n_id[i - 1], n_id[i], n_pos[i], my_pos[i], comm);
+                         n_id[i - 1].data(), n_id[i].data(), n_pos[i].data(), my_pos[i], comm);
     if (not group) {
       /* try permutation */
       j = n_grid[i][(fft.plan[i].row_dir + 1) % 3];
@@ -560,8 +559,8 @@ int fft_init(double **data, int const *ca_mesh_dim, int const *ca_mesh_margin,
 
       group = find_comm_groups(
           {n_grid[i - 1][0], n_grid[i - 1][1], n_grid[i - 1][2]},
-          {n_grid[i][0], n_grid[i][1], n_grid[i][2]}, n_id[i - 1], n_id[i],
-          n_pos[i], my_pos[i], comm);
+          {n_grid[i][0], n_grid[i][1], n_grid[i][2]}, n_id[i - 1].data(), n_id[i].data(),
+          n_pos[i].data(), my_pos[i], comm);
 
       if (not group) {
         throw std::runtime_error("INTERNAL ERROR: fft_find_comm_groups error");
