@@ -1206,7 +1206,7 @@ void local_remove_all_particles() {
   int c;
   n_part = 0;
   max_seen_particle = -1;
-  std::fill(local_particles.data(), local_particles.data() + max_local_particles, nullptr);
+  std::fill(local_particles.begin(), local_particles.end(), nullptr);
 
   for (c = 0; c < local_cells.n; c++) {
     Particle *p;
