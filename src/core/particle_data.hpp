@@ -1,23 +1,23 @@
 /*
-  Copyright (C) 2010-2018 The ESPResSo project
-  Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
-    Max-Planck-Institute for Polymer Research, Theory Group
-
-  This file is part of ESPResSo.
-
-  ESPResSo is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  ESPResSo is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
-
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (C) 2010-2019 The ESPResSo project
+ * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
+ *   Max-Planck-Institute for Polymer Research, Theory Group
+ *
+ * This file is part of ESPResSo.
+ *
+ * ESPResSo is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * ESPResSo is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 #ifndef _PARTICLE_DATA_H
 #define _PARTICLE_DATA_H
 /** \file
@@ -446,6 +446,8 @@ struct ParticleList {
   int n;
   /** Number of particles that fit in until a resize is needed */
   int max;
+
+  Utils::Span<Particle> particles() { return {part, static_cast<size_t>(n)}; }
 };
 
 /************************************************
@@ -899,11 +901,11 @@ void recv_particles(ParticleList *particles, int node);
 /** Determine if the non-bonded interactions between @p p1 and @p p2 should be
  *  calculated.
  */
-inline bool do_nonbonded(Particle const *p1, Particle const *p2) {
+inline bool do_nonbonded(Particle const &p1, Particle const &p2) {
   /* check for particle 2 in particle 1's exclusion list. The exclusion list is
      symmetric, so this is sufficient. */
-  return std::none_of(p1->el.begin(), p1->el.end(),
-                      [p2](int id) { return p2->p.identity == id; });
+  return std::none_of(p1.el.begin(), p1.el.end(),
+                      [&p2](int id) { return p2.p.identity == id; });
 }
 #endif
 
@@ -928,7 +930,7 @@ void auto_exclusions(int distance);
 void init_type_map(int type);
 
 /* find a particle of given type and return its id */
-int get_random_p_id(int type);
+int get_random_p_id(int type, int random_index_in_type_map);
 int number_of_particles_with_type(int type);
 
 // The following functions are used by the python interface to obtain

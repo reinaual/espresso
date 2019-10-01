@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2018 The ESPResSo project
+# Copyright (C) 2013-2019 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -23,6 +23,7 @@ include "myconfig.pxi"
 from . import utils
 from espressomd.utils import is_valid_type
 from globals cimport immersed_boundaries
+from .utils import requires_experimental_features
 
 
 cdef class NonBondedInteraction:
@@ -45,7 +46,8 @@ cdef class NonBondedInteraction:
         if self.user_interactions is None:
             self.user_interactions = {}
         # Interaction id as argument
-        if len(args) == 2 and is_valid_type(args[0], int) and is_valid_type(args[1], int):
+        if len(args) == 2 and is_valid_type(
+                args[0], int) and is_valid_type(args[1], int):
             self._part_types = args
 
             # Load the parameters currently set in the Espresso core
@@ -155,7 +157,8 @@ cdef class NonBondedInteraction:
 
         """
         attr = object.__getattribute__(self, name)
-        if hasattr(attr, '__call__') and attr.__name__ == "_set_params_in_es_core":
+        if hasattr(
+                attr, '__call__') and attr.__name__ == "_set_params_in_es_core":
             def sync_params(*args, **kwargs):
                 result = attr(*args, **kwargs)
                 self._params.update(self._get_params_from_es_core())
@@ -538,15 +541,18 @@ IF LENNARD_JONES_GENERIC == 1:
 
             """
             IF LJGEN_SOFTCORE:
-                return {"epsilon", "sigma", "cutoff", "shift", "offset", "e1", "e2", "b1", "b2", "delta", "lam"}
+                return {"epsilon", "sigma", "cutoff", "shift",
+                        "offset", "e1", "e2", "b1", "b2", "delta", "lam"}
             ELSE:
-                return {"epsilon", "sigma", "cutoff", "shift", "offset", "e1", "e2", "b1", "b2"}
+                return {"epsilon", "sigma", "cutoff",
+                        "shift", "offset", "e1", "e2", "b1", "b2"}
 
         def required_keys(self):
             """Parameters that have to be set.
 
             """
-            return {"epsilon", "sigma", "cutoff", "shift", "offset", "e1", "e2", "b1", "b2"}
+            return {"epsilon", "sigma", "cutoff",
+                    "shift", "offset", "e1", "e2", "b1", "b2"}
 
 IF LJCOS:
 
@@ -862,7 +868,8 @@ IF DPD:
             }
 
         def is_active(self):
-            return (self._params["r_cut"] > 0) or (self._params["trans_r_cut"] > 0)
+            return (self._params["r_cut"] > 0) or (
+                self._params["trans_r_cut"] > 0)
 
         def set_params(self, **kwargs):
             """Set parameters for the DPD interaction.
@@ -911,7 +918,8 @@ IF DPD:
             return "DPD"
 
         def valid_keys(self):
-            return {"weight_function", "gamma", "r_cut", "trans_weight_function", "trans_gamma", "trans_r_cut"}
+            return {"weight_function", "gamma", "r_cut",
+                    "trans_weight_function", "trans_gamma", "trans_r_cut"}
 
         def required_keys(self):
             return set()
@@ -1046,7 +1054,8 @@ IF BMHTF_NACL == 1:
             """Check if interaction is active.
 
             """
-            return (self._params["a"] > 0) and (self._params["c"] > 0) and (self._params["d"] > 0)
+            return (self._params["a"] > 0) and (
+                self._params["c"] > 0) and (self._params["d"] > 0)
 
         def _set_params_in_es_core(self):
             if BMHTF_set_params(self._part_types[0],
@@ -1227,7 +1236,8 @@ IF BUCKINGHAM == 1:
             """Check if interaction is active.
 
             """
-            return (self._params["a"] > 0) or (self._params["b"] > 0) or (self._params["d"] > 0) or (self._params["shift"] > 0)
+            return (self._params["a"] > 0) or (self._params["b"] > 0) or (
+                self._params["d"] > 0) or (self._params["shift"] > 0)
 
         def _set_params_in_es_core(self):
             if buckingham_set_params(self._part_types[0], self._part_types[1],
@@ -1428,10 +1438,12 @@ IF AFFINITY == 1:
             return "Affinity"
 
         def valid_keys(self):
-            return {"affinity_type", "affinity_kappa", "affinity_r0", "affinity_Kon", "affinity_Koff", "affinity_maxBond", "affinity_cut"}
+            return {"affinity_type", "affinity_kappa", "affinity_r0",
+                    "affinity_Kon", "affinity_Koff", "affinity_maxBond", "affinity_cut"}
 
         def required_keys(self):
-            return {"affinity_type", "affinity_kappa", "affinity_r0", "affinity_Kon", "affinity_Koff", "affinity_maxBond", "affinity_cut"}
+            return {"affinity_type", "affinity_kappa", "affinity_r0",
+                    "affinity_Kon", "affinity_Koff", "affinity_maxBond", "affinity_cut"}
 
 
 IF MEMBRANE_COLLISION == 1:
@@ -1727,7 +1739,8 @@ cdef class NonBondedInteractions:
         if not isinstance(key, tuple):
             raise ValueError(
                 "NonBondedInteractions[] expects two particle types as indices.")
-        if len(key) != 2 or (not is_valid_type(key[0], int)) or (not is_valid_type(key[1], int)):
+        if len(key) != 2 or (not is_valid_type(key[0], int)) or (
+                not is_valid_type(key[1], int)):
             raise ValueError(
                 "NonBondedInteractions[] expects two particle types as indices.")
         return NonBondedInteractionHandle(key[0], key[1])
@@ -1842,7 +1855,8 @@ cdef class BondedInteraction:
 
         """
         attr = object.__getattribute__(self, name)
-        if hasattr(attr, '__call__') and attr.__name__ == "_set_params_in_es_core":
+        if hasattr(
+                attr, '__call__') and attr.__name__ == "_set_params_in_es_core":
             def sync_params(*args, **kwargs):
                 result = attr(*args, **kwargs)
                 self._params.update(self._get_params_from_es_core())
@@ -1900,7 +1914,8 @@ cdef class BondedInteraction:
         else:
             id_str = str(self._bond_id)
 
-        return self.__class__.__name__ + "(" + id_str + "): " + self._params.__str__()
+        return self.__class__.__name__ + \
+            "(" + id_str + "): " + self._params.__str__()
 
     def __richcmp__(self, other, i):
         if i != 2:
@@ -2065,6 +2080,7 @@ class HarmonicBond(BondedInteraction):
         harmonic_set_params(
             self._bond_id, self._params["k"], self._params["r_0"], self._params["r_cut"])
 
+
 if ELECTROSTATICS:
 
     class BondedCoulomb(BondedInteraction):
@@ -2191,7 +2207,8 @@ class ThermalizedBond(BondedInteraction):
         return "THERMALIZED_DIST"
 
     def valid_keys(self):
-        return {"temp_com", "gamma_com", "temp_distance", "gamma_distance", "r_cut", "seed"}
+        return {"temp_com", "gamma_com", "temp_distance",
+                "gamma_distance", "r_cut", "seed"}
 
     def required_keys(self):
         return {"temp_com", "gamma_com", "temp_distance", "gamma_distance"}
@@ -2229,6 +2246,7 @@ class ThermalizedBond(BondedInteraction):
             self._bond_id, self._params["temp_com"], self._params["gamma_com"],
             self._params["temp_distance"], self._params["gamma_distance"], self._params["r_cut"])
 
+
 IF THOLE:
 
     cdef class TholeInteraction(NonBondedInteraction):
@@ -2256,9 +2274,9 @@ IF THOLE:
             scaling_coeff : :obj:`float`
                 The factor used in the Thole damping function between
                 polarizable particles i and j. Usually calculated by
-                the polarizabilities alpha_i, alpha_j and damping
-                parameters  a_i, a_j via
-                scaling_coeff = (a_i+a_j)/2 / ((alpha_i*alpha_j)^(1/2))^(1/3)
+                the polarizabilities :math:`\\alpha_i`, :math:`\\alpha_j`
+                and damping parameters :math:`a_i`, :math:`a_j` via
+                :math:`s_{ij} = \\frac{(a_i+a_j)/2}{((\\alpha_i\\cdot\\alpha_j)^{1/2})^{1/3}}`
             q1q2: :obj:`float`
                 Charge factor of the involved charges. Has to be set because
                 it acts only on the portion of the Drude core charge that is
@@ -2288,6 +2306,7 @@ IF THOLE:
 
 IF ROTATION:
 
+    @requires_experimental_features("No test coverage")
     class HarmonicDumbbellBond(BondedInteraction):
 
         """
@@ -2534,9 +2553,9 @@ class _TabulatedBase(BondedInteraction):
     max : :obj:`float`
         The maximal interaction distance. Has to be pi for angles and 2pi for
         dihedrals.
-    energy: array_like :obj:`float`
+    energy: array_like of :obj:`float`
         The energy table.
-    force: array_like :obj:`float`
+    force: array_like of :obj:`float`
         The force table.
 
     """
@@ -2619,9 +2638,9 @@ class TabulatedDistance(_TabulatedBase):
         The minimal interaction distance.
     max : :obj:`float`
         The maximal interaction distance.
-    energy: array_like :obj:`float`
+    energy: array_like of :obj:`float`
         The energy table.
-    force: array_like :obj:`float`
+    force: array_like of :obj:`float`
         The force table.
 
     """
@@ -2653,9 +2672,9 @@ class TabulatedAngle(_TabulatedBase):
     Parameters
     ----------
 
-    energy: array_like :obj:`float`
+    energy: array_like of :obj:`float`
         The energy table for the range :math:`0-\\pi`.
-    force: array_like :obj:`float`
+    force: array_like of :obj:`float`
         The force table for the range :math:`0-\\pi`.
 
     """
@@ -2693,9 +2712,9 @@ class TabulatedDihedral(_TabulatedBase):
     Parameters
     ----------
 
-    energy: array_like :obj:`float`
+    energy: array_like of :obj:`float`
         The energy table for the range :math:`0-2\\pi`.
-    force: array_like :obj:`float`
+    force: array_like of :obj:`float`
         The force table for the range :math:`0-2\\pi`.
 
     """
@@ -2766,9 +2785,9 @@ IF TABULATED == 1:
                 The minimal interaction distance.
             max : :obj:`float`,
                 The maximal interaction distance.
-            energy: array_like :obj:`float`
+            energy: array_like of :obj:`float`
                 The energy table.
-            force: array_like :obj:`float`
+            force: array_like of :obj:`float`
                 The force table.
 
             """
@@ -3156,6 +3175,7 @@ class IBM_Tribend(BondedInteraction):
                               self._params["ind4"], self._params["kb"], flat)
 
 
+@requires_experimental_features("No test coverage")
 class IBM_VolCons(BondedInteraction):
 
     """
@@ -3302,13 +3322,15 @@ class OifLocalForces(BondedInteraction):
         """All parameters that can be set.
 
         """
-        return {"r0", "ks", "kslin", "phi0", "kb", "A01", "A02", "kal", "kvisc"}
+        return {"r0", "ks", "kslin", "phi0",
+                "kb", "A01", "A02", "kal", "kvisc"}
 
     def required_keys(self):
         """Parameters that have to be set.
 
         """
-        return {"r0", "ks", "kslin", "phi0", "kb", "A01", "A02", "kal", "kvisc"}
+        return {"r0", "ks", "kslin", "phi0",
+                "kb", "A01", "A02", "kal", "kvisc"}
 
     def set_default_params(self):
         """Sets parameters that are not required to their default value.
@@ -3334,6 +3356,7 @@ class OifLocalForces(BondedInteraction):
             self._params["kslin"], self._params["phi0"], self._params["kb"],
             self._params["A01"], self._params["A02"], self._params["kal"],
             self._params["kvisc"])
+
 
 IF MEMBRANE_COLLISION == 1:
 
@@ -3361,8 +3384,7 @@ IF MEMBRANE_COLLISION == 1:
             self._params = {}
 
         def _get_params_from_es_core(self):
-            return \
-                {}
+            return {}
 
         def _set_params_in_es_core(self):
             oif_out_direction_set_params(
@@ -3430,6 +3452,7 @@ class QuarticBond(BondedInteraction):
     def _set_params_in_es_core(self):
         quartic_set_params(
             self._bond_id, self._params["k0"], self._params["k1"], self._params["r"], self._params["r_cut"])
+
 
 bonded_interaction_classes = {
     int(BONDED_IA_FENE): FeneBond,
@@ -3500,7 +3523,7 @@ class BondedInteractions:
         # type of key must be int
         if not is_valid_type(key, int):
             raise ValueError(
-                "Index to BondedInteractions[] has to ba an integer referring to a bond id")
+                "Index to BondedInteractions[] has to be an integer referring to a bond id")
 
         # Value must be subclass off BondedInteraction
         if not isinstance(value, BondedInteraction):

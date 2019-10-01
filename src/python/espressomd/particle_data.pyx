@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2018 The ESPResSo project
+# Copyright (C) 2013-2019 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -41,6 +41,7 @@ PARTICLE_EXT_FORCE = 1
 def _COORD_FIXED(coord):
     return 2L << coord
 
+
 COORDS_FIX_MASK = _COORD_FIXED(0) | _COORD_FIXED(1) | _COORD_FIXED(2)
 COORDS_ALL_FIXED = _COORD_FIXED(0) & _COORD_FIXED(1) & _COORD_FIXED(2)
 PARTICLE_EXT_TORQUE = 16
@@ -54,7 +55,7 @@ ROT_Z = 8
 particle_attributes = []
 for d in dir(ParticleHandle):
     if type(getattr(ParticleHandle, d)) == type(ParticleHandle.pos):
-        if not d in ["pos_folded"]:
+        if d != "pos_folded":
             particle_attributes.append(d)
 
 cdef class ParticleHandle:
@@ -99,7 +100,7 @@ cdef class ParticleHandle:
             Nonbonded interactions act between different types of particles.
 
         .. note::
-           The value of `type` has to be an integer >= 0.
+           The value of ``type`` has to be an integer >= 0.
 
         """
 
@@ -121,7 +122,7 @@ cdef class ParticleHandle:
         mol_id : :obj:`int`
             The particle ``mol_id`` is used to differentiate between
             particles belonging to different molecules, e.g. when virtual
-            sites are used, or object-in-fuid cells. The default
+            sites are used, or object-in-fluid cells. The default
             ``mol_id`` for all particles is 0.
 
         .. note::
@@ -145,7 +146,7 @@ cdef class ParticleHandle:
         The unwrapped (not folded into central box) particle position.
 
         pos : (3,) array_like of :obj:`float`
-            The particles's absolute position.
+            The particles' absolute position.
 
         """
 
@@ -169,10 +170,10 @@ cdef class ParticleHandle:
         The wrapped (folded into central box) position vector of a particle.
 
         pos : (3,) array_like of :obj:`float`
-            The particles's position.
+            The particles' position.
 
         .. note::
-           Setting the folded position is ambiguous and is thus not possible, please use `pos`.
+           Setting the folded position is ambiguous and is thus not possible, please use ``pos``.
 
         Examples
         --------
@@ -205,7 +206,8 @@ cdef class ParticleHandle:
 
         def __get__(self):
             self.update_particle_data()
-            return make_array_locked(folded_position(Vector3d(self.particle_data.r.p), box_geo))
+            return make_array_locked(folded_position(
+                Vector3d(self.particle_data.r.p), box_geo))
 
     property image_box:
         """
@@ -227,7 +229,7 @@ cdef class ParticleHandle:
         The particle velocity in the lab frame.
 
         v : (3,) array_like of :obj:`float`
-            The particles's velocity
+            The particles' velocity
 
         .. note::
            The velocity remains variable and will be changed during integration.
@@ -257,7 +259,7 @@ cdef class ParticleHandle:
         .. note::
            Whereas the velocity is modified with respect to the velocity you set
            upon integration, the force it recomputed during the integration step and any
-           force set in this way is immediatly lost at the next integration step.
+           force set in this way is immediately lost at the next integration step.
 
         """
 
@@ -280,13 +282,13 @@ cdef class ParticleHandle:
 
         bonds : list/tuple of tuples/lists
             a bond tuple is specified as a bond identifier associated with
-            a particle `(bond_ID, part_ID)`. A single particle may contain
+            a particle ``(bond_ID, part_ID)``. A single particle may contain
             multiple such tuples.
 
         See Also
         --------
-        espressomd.particle_data.ParticleHandle.add_bond : Method to add bonds to a `Particle`
-        espressomd.particle_data.ParticleHandle.delete_bond : Method to remove bonds from a `Particle`
+        espressomd.particle_data.ParticleHandle.add_bond : Method to add bonds to a ``Particle``
+        espressomd.particle_data.ParticleHandle.delete_bond : Method to remove bonds from a ``Particle``
 
         .. note::
            Bond ids have to be an integer >= 0.
@@ -402,7 +404,8 @@ cdef class ParticleHandle:
 
             def __get__(self):
                 self.update_particle_data()
-                return array_locked(self.convert_vector_body_to_space(self.omega_body))
+                return array_locked(
+                    self.convert_vector_body_to_space(self.omega_body))
 
         property quat:
             """
@@ -520,13 +523,13 @@ cdef class ParticleHandle:
             """
             The particle rotational inertia.
 
-            rintertia : (3,) array_like of :obj:`float`
+            rinertia : (3,) array_like of :obj:`float`
 
             Sets the diagonal elements of this particles rotational inertia
             tensor. These correspond with the inertial moments along the
             coordinate axes in the particle’s co-rotating coordinate system.
-            When the particle's quaternions are set to 1 0 0 0, the co-rotating
-            and the fixed (lab) frame are co-aligned.
+            When the particle's quaternions are set to ``[1, 0, 0, 0,]``, the
+            co-rotating and the fixed (lab) frames are co-aligned.
 
             .. note::
                This needs the feature ``ROTATIONAL_INERTIA``.
@@ -564,7 +567,8 @@ cdef class ParticleHandle:
                 self.update_particle_data()
                 cdef const double * out_direction = NULL
                 pointer_to_out_direction(self.particle_data, out_direction)
-                return np.array([out_direction[0], out_direction[1], out_direction[2]])
+                return np.array(
+                    [out_direction[0], out_direction[1], out_direction[2]])
 
     IF AFFINITY:
         property bond_site:
@@ -617,7 +621,7 @@ cdef class ParticleHandle:
 
             mu_E : :obj:`float`
 
-            This effectivly acts as a velocity offset between
+            This effectively acts as a velocity offset between
             a lattice-Boltzmann fluid and the particle. Has only
             an effect if LB is turned on.
 
@@ -644,31 +648,41 @@ cdef class ParticleHandle:
 
                 return array_locked([mu_E[0], mu_E[1], mu_E[2]])
 
-    IF VIRTUAL_SITES:
-        property virtual:
-            """Virtual flag.
+    property virtual:
+        """Virtual flag.
 
-            Declares the particles as virtual (``True``) or non-virtual
-            (``False``, default).
+        Declares the particles as virtual (``True``) or non-virtual
+        (``False``, default).
 
-            virtual : :obj:`bool`
+        virtual : :obj:`bool`
 
-            .. note::
-               This needs the feature ``VIRTUAL_SITES``
+        .. note::
+           This needs the feature ``VIRTUAL_SITES``
 
-            """
+        """
 
-            def __set__(self, _v):
+        def __set__(self, _v):
+            IF VIRTUAL_SITES:
                 if is_valid_type(_v, int):
                     set_particle_virtual(self._id, < bint > _v)
                 else:
                     raise ValueError("virtual must be a boolean.")
+            ELSE:
+                if _v:
+                    raise AttributeError(
+                        "To make a particle virtual, VIRTUAL_SITES has to be defined in myconfig.hpp")
 
-            def __get__(self):
+        def __get__(self):
+            # Note: the pointoer_to... mechanism doesn't work if virtual sites
+            # are not compiled in, because then, in the core, p.p.is_virtual
+            # is constexpr.
+            IF VIRTUAL_SITES:
                 self.update_particle_data()
                 cdef const bool * x = NULL
                 pointer_to_virtual(self.particle_data, x)
                 return x[0]
+            ELSE:
+                return False
 
     IF VIRTUAL_SITES_RELATIVE:
         property vs_quat:
@@ -726,7 +740,8 @@ cdef class ParticleHandle:
                 for i in range(4):
                     _q[i] = q[i]
 
-                if is_valid_type(_relto, int) and is_valid_type(_dist, float) and all(is_valid_type(fq, float) for fq in q):
+                if is_valid_type(_relto, int) and is_valid_type(
+                        _dist, float) and all(is_valid_type(fq, float) for fq in q):
                     set_particle_vs_relative(self._id, _relto, _dist, _q) 
                 else:
                     raise ValueError(
@@ -909,7 +924,7 @@ cdef class ParticleHandle:
                 """
                 The body-fixed frictional coefficient used in the Langevin thermostat.
 
-                gamma : `float` or (3,) array_like of :obj:`float`
+                gamma : :obj:`float` or (3,) array_like of :obj:`float`
 
                 .. note::
                     This needs features ``LANGEVIN_PER_PARTICLE`` and
@@ -973,7 +988,7 @@ cdef class ParticleHandle:
                     """
                     The particle translational frictional coefficient used in the Langevin thermostat.
 
-                    gamma_rot : :obj:`float` of (3,) array_like of :obj:`float`
+                    gamma_rot : :obj:`float` or (3,) array_like of :obj:`float`
 
                     .. note::
                         This needs features ``LANGEVIN_PER_PARTICLE``,
@@ -997,7 +1012,8 @@ cdef class ParticleHandle:
                         cdef const double * gamma_rot = NULL
                         pointer_to_gamma_rot(
                             self.particle_data, gamma_rot)
-                        return array_locked([gamma_rot[0], gamma_rot[1], gamma_rot[2]])
+                        return array_locked(
+                            [gamma_rot[0], gamma_rot[1], gamma_rot[2]])
             ELSE:
                 property gamma_rot:
                     """
@@ -1147,7 +1163,7 @@ cdef class ParticleHandle:
         def delete_exclusion(self, _partner):
             check_type_or_throw_except(
                 _partner, 1, int, "PID of partner has to be an int.")
-            if not _partner in self.exclusions:
+            if _partner not in self.exclusions:
                 raise Exception("Particle with id " +
                                 str(_partner) + " is not in exclusion list.")
             if change_exclusion(self._id, _partner, 1) == 1:
@@ -1185,10 +1201,10 @@ cdef class ParticleHandle:
             f_swim : :obj:`float`
                 Achieve a constant velocity by imposing a constant
                 force term ``f_swim`` that is balanced by friction of a
-                (Langevin) thermostat. This exludes the option ``v_swim``.
+                (Langevin) thermostat. This excludes the option ``v_swim``.
             v_swim : :obj:`float`
                 Achieve a constant velocity by imposing a constant terminal
-                velocity ``v_swim``. This exludes the option ``f_swim``.
+                velocity ``v_swim``. This excludes the option ``f_swim``.
             mode : :obj:`str`, \{'pusher', 'puller'\}
                 The LB flow field can be generated by a pushing or a
                 pulling mechanism, leading to change in the sign of the
@@ -1235,7 +1251,7 @@ cdef class ParticleHandle:
                 swim.push_pull = 0
                 swim.dipole_length = 0.0
                 swim.rotational_friction = 0.0
- 
+
                 if type(_params) == type(True):
                     if _params:
                         raise Exception(
@@ -1328,8 +1344,8 @@ cdef class ParticleHandle:
 
         See Also
         --------
-        add_bond : Delete an unverified bond held by the `Particle`.
-        bonds : `Particle` property containing a list of all current bonds help by `Particle`.
+        add_bond : Delete an unverified bond held by the ``Particle``.
+        bonds : ``Particle`` property containing a list of all current bonds help by ``Particle``.
 
         """
 
@@ -1359,8 +1375,8 @@ cdef class ParticleHandle:
 
         See Also
         --------
-        delete_bond : Delete an unverified bond held by the `Particle`.
-        bonds : `Particle` property containing a list of all current bonds help by `Particle`.
+        delete_bond : Delete an unverified bond held by the ``Particle``.
+        bonds : ``Particle`` property containing a list of all current bonds help by ``Particle``.
 
         """
 
@@ -1377,9 +1393,9 @@ cdef class ParticleHandle:
         Checks the validity of the given bond:
 
             - If the bondtype is given as an object or a numerical id
-            - If all partners are of type int
+            - If all partners are of type :obj:`int`
             - If the number of partners satisfies the bond
-            - If the bond type used exists (is lower than n_bonded_ia)
+            - If the bond type used exists (is lower than ``n_bonded_ia``)
             - If the number of bond partners fits the bond type
 
         Throws an exception if any of these are not met.
@@ -1412,8 +1428,8 @@ cdef class ParticleHandle:
         bond_id = bond[0]._bond_id
         # Number of partners
         if bonded_ia_params[bond_id].num != len(bond) - 1:
-            raise ValueError("Bond of type", bond[
-                             0]._bond_id, "needs", bonded_ia_params[bond_id].num, "partners.")
+            raise ValueError("Bond of type", bond[0]._bond_id, "needs",
+                             bonded_ia_params[bond_id].num, "partners.")
 
         # Type check on partners
         for i in range(1, len(bond)):
@@ -1439,7 +1455,7 @@ cdef class ParticleHandle:
 
         See Also
         --------
-        bonds : `Particle` property containing a list of all current bonds help by `Particle`.
+        bonds : ``Particle`` property containing a list of all current bonds help by ``Particle``.
 
         Examples
         --------
@@ -1569,9 +1585,9 @@ cdef class ParticleHandle:
 
             Parameters
             ----------
-            axis : array-like
+            axis : (3,) array_like of :obj:`float`
 
-            angle : float
+            angle : :obj:`float`
 
             """
             cdef Vector3d a
@@ -1724,10 +1740,10 @@ cdef class ParticleList:
         try:
             if isinstance(key, range):
                 return ParticleSlice(key)
-        except:
+        except BaseException:
             pass
 
-        if isinstance(key, tuple) or isinstance(key, list) or isinstance(key, np.ndarray):
+        if isinstance(key, (tuple, list, np.ndarray)):
             return ParticleSlice(np.array(key))
 
         return ParticleHandle(key)
@@ -1824,7 +1840,7 @@ cdef class ParticleList:
                     "add() takes either a dictionary or a bunch of keyword args.")
 
         # Check for presence of pos attribute
-        if not "pos" in P:
+        if "pos" not in P:
             raise ValueError(
                 "pos attribute must be specified for new particle")
 
@@ -1835,7 +1851,7 @@ cdef class ParticleList:
 
     def _place_new_particle(self, P):
         # Handling of particle id
-        if not "id" in P:
+        if "id" not in P:
             # Generate particle id
             P["id"] = max_seen_particle + 1
         else:
@@ -1900,7 +1916,7 @@ Set quat and scalar dipole moment (dipm) instead.")
     def exists(self, idx):
         if is_valid_type(idx, int):
             return particle_exists(idx)
-        if isinstance(idx, slice) or isinstance(idx, tuple) or isinstance(idx, list) or isinstance(idx, np.ndarray):
+        if isinstance(idx, (slice, tuple, list, np.ndarray)):
             tf_array = np.zeros(len(idx), dtype=np.bool)
             for i in range(len(idx)):
                 tf_array[i] = particle_exists(idx[i])
@@ -1957,7 +1973,7 @@ Set quat and scalar dipole moment (dipm) instead.")
         >>> system.part.writevtk("part_type_2.vtk", types=[2])
         >>> system.part.writevtk("part_all.vtk")
 
-        .. todo:: `move to ./io/writer/`
+        .. todo:: move to ``./io/writer/``
 
         """
 
@@ -2065,7 +2081,8 @@ Set quat and scalar dipole moment (dipm) instead.")
         # Ids of the selected particles
         ids = []
         # Did we get a function as argument?
-        if len(args) == 1 and len(kwargs) == 0 and isinstance(args[0], types.FunctionType):
+        if len(args) == 1 and len(kwargs) == 0 and isinstance(
+                args[0], types.FunctionType):
             # Go over all particles and pass them to the user-provided function
             for p in self:
                 if args[0](p):

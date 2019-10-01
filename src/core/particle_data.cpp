@@ -1,23 +1,23 @@
 /*
-  Copyright (C) 2010-2018 The ESPResSo project
-  Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
-    Max-Planck-Institute for Polymer Research, Theory Group
-
-  This file is part of ESPResSo.
-
-  ESPResSo is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  ESPResSo is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
-
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * Copyright (C) 2010-2019 The ESPResSo project
+ * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
+ *   Max-Planck-Institute for Polymer Research, Theory Group
+ *
+ * This file is part of ESPResSo.
+ *
+ * ESPResSo is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * ESPResSo is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 /** \file
  *  Particles and particle lists.
  *
@@ -52,8 +52,6 @@
 #include <boost/variant.hpp>
 
 #include <cmath>
-#include <cstdlib>
-#include <cstring>
 #include <unordered_map>
 #include <unordered_set>
 /************************************************
@@ -1402,7 +1400,6 @@ void remove_all_exclusions() { mpi_send_exclusion(-1, -1, 1); }
 
 void auto_exclusions(int distance) {
   int count, p, i, j, p1, p2, p3, dist1, dist2;
-  Bonded_ia_parameters *ia_params;
 
   /* partners is a list containing the currently found excluded particles for
      each particle, and their distance, as an interleaved list */
@@ -1415,8 +1412,8 @@ void auto_exclusions(int distance) {
   for (auto const &part1 : partCfg()) {
     p1 = part1.p.identity;
     for (i = 0; i < part1.bl.n;) {
-      ia_params = &bonded_ia_params[part1.bl.e[i++]];
-      if (ia_params->num == 1) {
+      Bonded_ia_parameters const &ia_params = bonded_ia_params[part1.bl.e[i++]];
+      if (ia_params.num == 1) {
         p2 = part1.bl.e[i++];
         /* you never know what the user does, may bond a particle to itself...?
          */
@@ -1425,7 +1422,7 @@ void auto_exclusions(int distance) {
           add_partner(&partners[p2], p2, p1, 1);
         }
       } else
-        i += ia_params->num;
+        i += ia_params.num;
     }
   }
 
@@ -1487,11 +1484,11 @@ void remove_id_from_map(int part_id, int type) {
     particle_type_map.at(type).erase(part_id);
 }
 
-int get_random_p_id(int type) {
-  if (particle_type_map.at(type).empty())
-    throw std::runtime_error("No particles of given type could be found");
-  int rand_index = i_random(particle_type_map.at(type).size());
-  return *std::next(particle_type_map[type].begin(), rand_index);
+int get_random_p_id(int type, int random_index_in_type_map) {
+  if (random_index_in_type_map + 1 > particle_type_map.at(type).size())
+    throw std::runtime_error("The provided index exceeds the number of "
+                             "particles listed in the type_map");
+  return *std::next(particle_type_map[type].begin(), random_index_in_type_map);
 }
 
 void add_id_to_type_map(int part_id, int type) {

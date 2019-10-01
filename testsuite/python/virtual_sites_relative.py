@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2018 The ESPResSo project
+# Copyright (C) 2013-2019 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -289,6 +289,15 @@ class VirtualSites(ut.TestCase):
             # the lj interaction
             verify_lj_forces(system, 1E-10, 3 *
                              np.arange(int(n / 2), dtype=int))
+
+        # Test applying changes
+        enegry_pre_change = system.analysis.energy()['total']
+        pressure_pre_change = system.analysis.pressure()['total']
+        system.part[0].pos = system.part[0].pos + (2.2, -1.4, 4.2)
+        enegry_post_change = system.analysis.energy()['total']
+        pressure_post_change = system.analysis.pressure()['total']
+        self.assertNotAlmostEqual(enegry_pre_change, enegry_post_change)
+        self.assertNotAlmostEqual(pressure_pre_change, pressure_post_change)
 
         # Turn off lj interaction
         system.non_bonded_inter[0, 0].lennard_jones.set_params(
