@@ -334,7 +334,7 @@ void layered_topology_init(CellPList *old, Utils::Vector3i &grid,
 
   /* copy particles */
   for (int c = 0; c < old->n; c++) {
-    Particle *part = old->cell[c]->part;
+    Particle *part = old->cell[c]->part.data();
     int np = old->cell[c]->n;
     for (int p = 0; p < np; p++) {
       Cell *nc = layered_position_to_cell(part[p].r.p);

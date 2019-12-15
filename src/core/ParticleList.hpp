@@ -30,9 +30,9 @@
  *  (we hope) algorithm to avoid unnecessary resizes.
  */
 struct ParticleList {
-  ParticleList() : part{nullptr}, n{0}, max{0} {}
+  ParticleList() : n{0}, max{0} {}
   /** The particles payload */
-  Particle *part;
+  std::vector<Particle> part;
   /** Number of particles contained */
   int n;
 
@@ -43,7 +43,7 @@ private:
   int realloc(int size) {
     assert(size >= 0);
     int old_max = max;
-    Particle *old_start = part;
+    Particle *old_start = part.data();
 
     if (size < max) {
       if (size == 0)
@@ -56,15 +56,15 @@ private:
       /* round up */
       max = INCREMENT * ((size + INCREMENT - 1) / INCREMENT);
     if (max != old_max)
-      part = Utils::realloc(part, sizeof(Particle) * max);
-    return part != old_start;
+      part.resize(max);
+    return part.data() != old_start;
   }
 
 public:
   /** Current allocation size. */
   auto capacity() const { return max; }
 
-  Utils::Span<Particle> particles() { return {part, static_cast<size_t>(n)}; }
+  Utils::Span<Particle> particles() { return {part.data(), static_cast<size_t>(n)}; }
 
   /** granularity of the particle buffers in particles */
   static constexpr int INCREMENT = 8;

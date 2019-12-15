@@ -510,9 +510,9 @@ void realloc_local_particles(int part) {
 }
 
 void update_local_particles(ParticleList *pl) {
-  Particle *p = pl->part;
-  int n = pl->n, i;
-  for (i = 0; i < n; i++)
+  Particle *p = pl->part.data();
+  int n = pl->n;
+  for (int i = 0; i < n; i++)
     local_particles[p[i].p.identity] = &p[i];
 }
 
@@ -523,7 +523,7 @@ void append_unindexed_particle(ParticleList *l, Particle &&part) {
 
 Particle *append_indexed_particle(ParticleList *l, Particle &&part) {
   auto const re = l->resize(l->n + 1);
-  auto p = new (&(l->part[l->n - 1])) Particle(std::move(part));
+  auto p = new (&(l->part[l->n - 1])) Particle{std::move(part)};
 
   assert(p->p.identity <= max_seen_particle);
 
@@ -1110,18 +1110,15 @@ Particle *local_place_particle(int id, const Utils::Vector3d &pos, int _new) {
 
 void local_remove_all_particles() {
   Cell *cell;
-  int c;
   n_part = 0;
   max_seen_particle = -1;
   std::fill(local_particles.begin(), local_particles.end(), nullptr);
 
-  for (c = 0; c < local_cells.n; c++) {
-    Particle *p;
-    int i, np;
+  for (int c = 0; c < local_cells.n; c++) {
     cell = local_cells.cell[c];
-    p = cell->part;
-    np = cell->n;
-    for (i = 0; i < np; i++)
+    Particle *p = cell->part.data();
+    int np = cell->n;
+    for (int i = 0; i < np; i++)
       free_particle(&p[i]);
     cell->n = 0;
   }

@@ -133,7 +133,7 @@ void nsq_topology_init(CellPList *old) {
 
   /* copy particles */
   for (int c = 0; c < old->n; c++) {
-    auto part = old->cell[c]->part;
+    auto part = old->cell[c]->part.data();
     auto np = old->cell[c]->n;
     for (int p = 0; p < np; p++)
       append_unindexed_particle(local, std::move(part[p]));
@@ -149,7 +149,7 @@ void nsq_exchange_particles(int global_flag, ParticleList *displaced_parts) {
 
   /* Sort displaced particles by the node they belong to. */
   std::vector<std::vector<Particle>> send_buf(n_nodes);
-  for (auto &p : Utils::make_span(displaced_parts->part, displaced_parts->n)) {
+  for (auto &p : Utils::make_span(displaced_parts->part.data(), displaced_parts->n)) {
     auto const target_node = (p.identity() % n_nodes);
     send_buf.at(target_node).emplace_back(std::move(p));
   }

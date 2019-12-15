@@ -126,7 +126,7 @@ void ImmersedBoundaries::calc_volumes() {
 
   // Loop over all particles on local node
   for (int c = 0; c < local_cells.n; c++) {
-    const Cell *const cell = local_cells.cell[c];
+    Cell *const cell = local_cells.cell[c];
 
     for (int i = 0; i < cell->n; i++) {
       Particle &p1 = cell->part[i];
@@ -232,7 +232,7 @@ void ImmersedBoundaries::calc_volumes() {
 void ImmersedBoundaries::calc_volume_force() {
   // Loop over all particles on local node
   for (int c = 0; c < local_cells.n; c++) {
-    const Cell *const cell = local_cells.cell[c];
+    Cell *const cell = local_cells.cell[c];
 
     for (int i = 0; i < cell->n; i++) {
       Particle &p1 = cell->part[i];

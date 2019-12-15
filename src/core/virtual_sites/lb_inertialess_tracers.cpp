@@ -72,7 +72,7 @@ void IBM_ForcesIntoFluid_CPU() {
   // Loop over local cells
   for (int c = 0; c < local_cells.n; c++) {
     Cell *cell = local_cells.cell[c];
-    Particle *p = cell->part;
+    Particle *p = cell->part.data();
     const int np = cell->n;
 
     for (int i = 0; i < np; i++)
@@ -83,7 +83,7 @@ void IBM_ForcesIntoFluid_CPU() {
   // Loop over ghost cells
   for (int c = 0; c < ghost_cells.n; c++) {
     Cell *cell = ghost_cells.cell[c];
-    Particle *p = cell->part;
+    Particle *p = cell->part.data();
     const int np = cell->n;
 
     for (int i = 0; i < np; i++) {
@@ -114,8 +114,8 @@ void IBM_UpdateParticlePositions(ParticleRange particles) {
   const double skin2 = Utils::sqr(0.5 * skin);
   // Loop over particles in local cells
   for (int c = 0; c < local_cells.n; c++) {
-    const Cell *const cell = local_cells.cell[c];
-    Particle *const p = cell->part;
+    Cell *const cell = local_cells.cell[c];
+    Particle *const p = cell->part.data();
     for (int j = 0; j < cell->n; j++)
       if (p[j].p.is_virtual) {
 #ifdef EXTERNAL_FORCES
@@ -302,8 +302,8 @@ void ParticleVelocitiesFromLB_CPU() {
   // Here all contributions are included: velocity, external force and particle
   // force.
   for (int c = 0; c < local_cells.n; c++) {
-    const Cell *const cell = local_cells.cell[c];
-    Particle *const p = cell->part;
+    Cell *const cell = local_cells.cell[c];
+    Particle *const p = cell->part.data();
     for (int j = 0; j < cell->n; j++)
       if (p[j].p.is_virtual) {
         double dummy[3];
@@ -316,8 +316,8 @@ void ParticleVelocitiesFromLB_CPU() {
   // Loop over particles in ghost cells
   // Here we only add the particle forces stemming from the ghosts
   for (int c = 0; c < ghost_cells.n; c++) {
-    const Cell *const cell = ghost_cells.cell[c];
-    Particle *const p = cell->part;
+    Cell *const cell = ghost_cells.cell[c];
+    Particle *const p = cell->part.data();
     for (int j = 0; j < cell->n; j++)
       // This criterion include the halo on the left, but excludes the halo on
       // the right
@@ -359,8 +359,8 @@ void ParticleVelocitiesFromLB_CPU() {
 
   // Transfer to velocity field
   for (int c = 0; c < local_cells.n; c++) {
-    const Cell *const cell = local_cells.cell[c];
-    Particle *const p = cell->part;
+    Cell *const cell = local_cells.cell[c];
+    Particle *const p = cell->part.data();
     for (int j = 0; j < cell->n; j++)
       if (p[j].p.is_virtual) {
         p[j].m.v[0] = p[j].f.f[0];

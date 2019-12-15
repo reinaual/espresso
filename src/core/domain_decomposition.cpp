@@ -610,7 +610,7 @@ void dd_topology_init(CellPList *old, const Utils::Vector3i &grid,
 
   /* copy particles */
   for (c = 0; c < old->n; c++) {
-    Particle *part = old->cell[c]->part;
+    Particle *part = old->cell[c]->part.data();
     int np = old->cell[c]->n;
     for (p = 0; p < np; p++) {
       Cell *nc = dd_save_position_to_cell(part[p].r.p);

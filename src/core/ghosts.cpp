@@ -179,7 +179,7 @@ static void prepare_ghost_cell(Cell *cell, int size) {
   /* reset excess particles */
   if (size < cell->capacity()) {
     for (auto &p :
-         make_span<Particle>(cell->part + size, cell->capacity() - size)) {
+         make_span<Particle>(cell->part.data() + size, cell->capacity() - size)) {
       p = Particle{};
       p.l.ghost = true;
     }
@@ -191,7 +191,7 @@ static void prepare_ghost_cell(Cell *cell, int size) {
   /* initialize new particles */
   if (old_cap < cell->capacity()) {
     auto new_parts =
-        make_span(cell->part + old_cap, cell->capacity() - old_cap);
+        make_span(cell->part.data() + old_cap, cell->capacity() - old_cap);
     std::uninitialized_fill(new_parts.begin(), new_parts.end(), Particle{});
     for (auto &p : new_parts) {
       p.l.ghost = true;

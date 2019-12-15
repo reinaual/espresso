@@ -71,7 +71,7 @@ BOOST_AUTO_TEST_CASE(verlet_ia) {
     c.m_neighbors = Neighbors<Cell *>(neighbors, {});
 
     c.resize(n_part_per_cell);
-    std::uninitialized_fill(c.part, c.part + c.n, Particle());
+    std::uninitialized_fill(c.part.begin(), c.part.begin() + c.n, Particle{});
 
     for (unsigned i = 0; i < n_part_per_cell; ++i) {
       c.part[i].p.identity = id++;
