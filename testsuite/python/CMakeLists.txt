@@ -204,6 +204,7 @@ python_test(FILE linear_momentum_lb.py MAX_NUM_PROC 2 LABELS gpu)
 python_test(FILE mmm1d.py MAX_NUM_PROC 2 LABELS gpu)
 python_test(FILE elc.py MAX_NUM_PROC 2)
 python_test(FILE elc_vs_analytic.py MAX_NUM_PROC 2)
+python_test(FILE elc_vs_analytic_nonneutral.py MAX_NUM_PROC 2)
 python_test(FILE rotation.py MAX_NUM_PROC 1)
 python_test(FILE shapes.py MAX_NUM_PROC 1)
 
