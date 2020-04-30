@@ -85,9 +85,9 @@ static std::vector<double> partblk;
 static double gblcblk[8];
 
 /** particle summation array (chi-sum) */
-static Utils::VectorXd<8> particle_sum{};
+// static Utils::VectorXd<8> particle_sum{};
 /** image summation array (X-sum) with positive indices from subset L_- and negative indices from subset L_+*/
-static Utils::VectorXd<8> image_sum{};
+// static Utils::VectorXd<8> image_sum{};
 
 /** structure for caching sin and cos values */
 typedef struct {
@@ -119,11 +119,13 @@ static double Q_energy(double omega, int n_part);
 /*@}*/
 /** \name p,q <> 0 per frequency code */
 /*@{*/
-static void setup_PQ(int p, int q, double omega,
-                     const ParticleRange &particles);
+static std::pair<Utils::VectorXd<8>, Utils::VectorXd<8>>
+setup_PQ(int p, int q, double omega, ParticleRange &particles);
 static void add_PQ_force(int p, int q, double omega,
                          const ParticleRange &particles);
-static double PQ_energy(double omega, int n_part);
+static double PQ_energy(double fpq, size_t n_part,
+                        Utils::VectorXd<8> particle_sum,
+                        Utils::VectorXd<8> image_sum);
 /*@}*/
 static void add_dipole_force(const ParticleRange &particles);
 static double dipole_energy(const ParticleRange &particles);
@@ -152,12 +154,12 @@ template <size_t dir>
 static std::vector<SCCache> sc_cache(const ParticleRange &particles, int n_freq,
                                      double u) {
   auto const n_part = particles.size();
-  std::vector<SCCache> ret(n_freq * n_part);
+  std::vector<SCCache> ret((n_freq + 1) * n_part);
 
-  for (size_t freq = 1; freq <= n_freq; freq++) {
+  for (size_t freq = 0; freq <= n_freq; freq++) {
     double pref = C_2PI * u * freq;
 
-    size_t o = (freq - 1) * n_part;
+    size_t o = freq * n_part;
     for (auto const &part : particles) {
       auto const arg = pref * part.r.p[dir];
       ret[o++] = {sin(arg), cos(arg)};
@@ -328,7 +330,7 @@ static double dipole_energy(const ParticleRange &particles) {
     }
   }
 
-  boost::mpi::all_reduce(comm_cart, moments, std::plus<>());
+  moments = boost::mpi::all_reduce(comm_cart, moments, std::plus<>());
 
   double eng = Utils::sqr(moments[2]) - moments[0] * moments[4] - Utils::sqr(elc_params.h * moments[0]) / 12;
 
@@ -517,7 +519,7 @@ static void add_z_force(const ParticleRange &particles) {
 /* PoQ exp sum */
 /*****************************************************************/
 
-static void setup_P(int p, double omega, const ParticleRange &particles) {
+static void setup_P(const int p, const double omega, const ParticleRange &particles) {
   double const pref = -coulomb.prefactor * 4 * M_PI * ux * uy /
                       (expm1(omega * box_geo.length()[2]));
   double const pref_di = coulomb.prefactor * 4 * M_PI * ux * uy;
@@ -811,24 +813,28 @@ inline Utils::VectorXd<8> fourier_factors(const size_t index_x, const size_t ind
   return temp_sum;
 }
 
-inline Utils::VectorXd<8> apply_factors(Utils::VectorXd<8> vector, const double factor_p, const double factor_n) {
-  /* this function is returning a copy of the vector with the first half scaled by the first factor and the second half
-   * with the second factor */
+inline Utils::VectorXd<8> apply_factors(Utils::VectorXd<8> vector,
+                                        const double factor_p,
+                                        const double factor_n) {
+  /* this function is returning a copy of the vector with the first half scaled
+   * by the first factor and the second half with the second factor */
   for (unsigned int i = 0; i < 4; ++i) {
     vector[i] *= factor_p;
-  }
-  for (unsigned int i = 4; i < 8; ++i) {
-    vector[i] *= factor_n;
+    vector[i + 4] *= factor_n;
   }
   return vector;
 }
 
 inline double sum_prefactor_prime(const double z, const double omega) {
-  return - exp(- omega * z) / expm1(-2 * omega * box_geo.length()[2]);
+  return - exp(- omega * z) / expm1(2 * omega * box_geo.length()[2]);
 }
 
-static void setup_PQ(const int p, const int q, const double omega,
-                     const ParticleRange &particles) {
+static std::pair<Utils::VectorXd<8>, Utils::VectorXd<8>>
+setup_PQ(const int p, const int q, const double omega,
+         const ParticleRange &particles) {
+
+  Utils::VectorXd<8> particle_sum{}, image_sum{};
+
   double const pref = -coulomb.prefactor * 8 * M_PI * ux * uy /
                       (expm1(omega * box_geo.length()[2]));
   double const pref_di = coulomb.prefactor * 8 * M_PI * ux * uy;
@@ -847,17 +853,13 @@ static void setup_PQ(const int p, const int q, const double omega,
   clear_vec(lclimge, size);
   clear_vec(gblcblk, size);
 
-  int ic = 0;
-  auto const ox = static_cast<int>((p - 1) * particles.size());
-  auto const oy = static_cast<int>((q - 1) * particles.size());
+  size_t ic = 0;
+  auto const ox = static_cast<size_t>(p * particles.size());
+  auto const oy = static_cast<size_t>(q * particles.size());
   for (auto const &p : particles) {
-    double e = exp(omega * p.r.p[2]);
-
-    const size_t index = size * ic;
     const size_t index_x = ox + ic;
     const size_t index_y = oy + ic;
 
-    const auto q_i = p.p.q;
     const double zpos = p.r.p[2];
 
     // setup vector with fourier factors
@@ -958,6 +960,9 @@ static void setup_PQ(const int p, const int q, const double omega,
     scale_vec(pref_di, lclimge, size);
     add_vec(gblcblk, gblcblk, lclimge, size);
   }
+
+  return {boost::mpi::all_reduce(comm_cart, particle_sum, std::plus<>()),
+          boost::mpi::all_reduce(comm_cart, image_sum, std::plus<>())};
 }
 
 static void add_PQ_force(int p, int q, double omega,
@@ -998,7 +1003,9 @@ static void add_PQ_force(int p, int q, double omega,
   }
 }
 
-static double PQ_energy(double fpq, const size_t n_part) {
+static double PQ_energy(const double fpq, const size_t n_part,
+                        const Utils::VectorXd<8> particle_sum,
+                        const Utils::VectorXd<8> image_sum) {
   // return p,q-summation part of the energy according to equation (3.10)
   const int size = 8;
   double eng = 0;
@@ -1038,8 +1045,8 @@ void ELC_add_force(const ParticleRange &particles) {
   int p, q;
   double omega;
 
-  auto const n_scxcache = int(ceil(elc_params.far_cut / ux) + 1);
-  auto const n_scycache = int(ceil(elc_params.far_cut / uy) + 1);
+  auto const n_scxcache = int(ceil(elc_params.far_cut * box_geo.length()[0]) + 1);
+  auto const n_scycache = int(ceil(elc_params.far_cut * box_geo.length()[1]) + 1);
 
   prepare_sc_cache(particles, n_scxcache, ux, n_scycache, uy);
   partblk.resize(particles.size() * 8);
@@ -1067,10 +1074,7 @@ void ELC_add_force(const ParticleRange &particles) {
   for (int p = 1; p < p_range; ++p) {
     for (int q = 1; Utils::sqr(ux * p) + Utils::sqr(uy * q) < elc_params.far_cut2; ++q) {
       const double fpq = sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
-      setup_PQ(p, q, 2 * Utils::pi() * fpq, particles);
-
-      boost::mpi::all_reduce(comm_cart, boost::mpi::inplace(particle_sum), std::plus<>());
-      boost::mpi::all_reduce(comm_cart, boost::mpi::inplace(image_sum), std::plus<>());
+      auto sums = setup_PQ(p, q, 2 * Utils::pi() * fpq, particles);
 
       add_PQ_force(p, q, fpq, particles);
     }
@@ -1095,30 +1099,33 @@ double ELC_energy(const ParticleRange &particles) {
   partblk.resize(n_localpart * 8);
 
   /* the second condition is just for the case of numerical accident */
-  for (p = 1; ux * (p - 1) < elc_params.far_cut && p <= n_scxcache; p++) {
-    omega = 2 * Utils::pi() * ux * p;
-    setup_P(p, omega, particles);
-    distribute(4);
-    eng += P_energy(omega, n_localpart);
-  }
-  for (q = 1; uy * (q - 1) < elc_params.far_cut && q <= n_scycache; q++) {
-    omega = C_2PI * uy * q;
-    setup_Q(q, omega, particles);
-    distribute(4);
-    eng += Q_energy(omega, n_localpart);
-  }
+//  for (p = 1; ux * (p - 1) < elc_params.far_cut && p <= n_scxcache; p++) {
+//    omega = 2 * Utils::pi() * ux * p;
+//    setup_P(p, omega, particles);
+//    distribute(4);
+//    eng += P_energy(omega, n_localpart);
+//  }
+//  for (q = 1; uy * (q - 1) < elc_params.far_cut && q <= n_scycache; q++) {
+//    omega = C_2PI * uy * q;
+//    setup_Q(q, omega, particles);
+//    distribute(4);
+//    eng += Q_energy(omega, n_localpart);
+//  }
   double pq_energy = 0;
   const int p_range = static_cast<int>(elc_params.far_cut * box_geo.length()[0] + 1);
   // TODO figure out why p and q dont have to be negative... is there any factor 2 to abuse some symmetry?
-  for (int p = 1; p < p_range; ++p) {
-    for (int q = 1; Utils::sqr(ux * p) + Utils::sqr(uy * q) < elc_params.far_cut2; ++q) {
+  for (int p = 0; p < p_range; ++p) {
+    for (int q = 0; Utils::sqr(ux * p) + Utils::sqr(uy * q) < elc_params.far_cut2; ++q) {
+      // skip the p^2 + p^2 == 0 term
+      if (p == 0 and q == 0) {
+        continue;
+      }
+
       const double fpq = sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
-      setup_PQ(p, q, 2 * Utils::pi() * fpq, particles);
+      const auto sums = setup_PQ(p, q, 2 * Utils::pi() * fpq, particles);
 
-      boost::mpi::all_reduce(comm_cart, boost::mpi::inplace(particle_sum), std::plus<>());
-      boost::mpi::all_reduce(comm_cart, boost::mpi::inplace(image_sum), std::plus<>());
-
-      pq_energy += PQ_energy(fpq, n_localpart);
+      pq_energy += PQ_energy(fpq, n_localpart, sums.first, sums.second);
+      runtimeWarningMsg() << p << " " << q << ": " << pq_energy;
     }
   }
   eng -= 0.5 * ux * uy * pq_energy;
