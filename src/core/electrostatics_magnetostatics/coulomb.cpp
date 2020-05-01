@@ -426,6 +426,7 @@ int elc_sanity_check() {
   case COULOMB_ELC_P3M:
 
   case COULOMB_P3M:
+    // enforcing the tinfoil boundary condition to prevent the dipole corrections
     p3m.params.epsilon = P3M_EPSILON_METALLIC;
     coulomb.method = COULOMB_ELC_P3M;
     return ES_OK;
