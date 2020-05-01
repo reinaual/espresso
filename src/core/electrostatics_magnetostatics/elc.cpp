@@ -107,8 +107,7 @@ static Utils::VectorXd<8> setup_PQ(int p, int q, double omega,
                                    const ParticleRange &particles);
 static void add_PQ_force(const ParticleRange &particles,
                          Utils::VectorXd<8> &part_sum);
-static double PQ_energy(double fpq,
-                        int n_particles,
+static double PQ_energy(double fpq, int n_particles,
                         Utils::VectorXd<8> &part_sum);
 /*@}*/
 static void add_dipole_force(const ParticleRange &particles);
@@ -196,8 +195,8 @@ inline double *block(double *p, int index, int size) {
 
 void distribute(int size) {
   double send_buf[8];
-// copy_vec(send_buf, image_sum, size);
-//  MPI_Allreduce(send_buf, image_sum, size, MPI_DOUBLE, MPI_SUM, comm_cart);
+  // copy_vec(send_buf, image_sum, size);
+  //  MPI_Allreduce(send_buf, image_sum, size, MPI_DOUBLE, MPI_SUM, comm_cart);
 }
 
 /*****************************************************************/
@@ -242,8 +241,8 @@ static void add_dipole_force(const ParticleRange &particles) {
       }
       if (zpos > (elc_params.h - elc_params.space_layer)) {
         moments[0] += elc_params.delta_mid_top * q;
-        moments[2] += elc_params.delta_mid_top * q *
-                      (2 * elc_params.h - zpos - shift);
+        moments[2] +=
+            elc_params.delta_mid_top * q * (2 * elc_params.h - zpos - shift);
       }
     }
   }
@@ -360,131 +359,146 @@ inline double image_sum_t(double q, double z) {
 }
 
 /*****************************************************************/
+
+inline double image_sum(const double z) {
+  const double delta = elc_params.delta_mid_bot * elc_params.delta_mid_top;
+  const double invdelta = 1. / (1 - delta);
+
+  return invdelta * (z + 2 * elc_params.h * delta * invdelta);
+}
+
+/**
+ * @brief This function is calculating non-pq part of the interaction of L_0
+ * with L_pm2 which consists of: zeta^0_Lp2 in (4.11) and zeta^1_Lp2 in (4.12)
+ * zeta^0_Lm2 in (4.8) and zeta^1_Lm2 in (4.9)
+ * and returns the adapted equation (3.4) (section IV.A):
+ * - pi * ux * uy * (zeta^1_L0 * (zeta^0_Lm2 - zeta^0_Lp2)
+ *                   - zeta^0_L0 * (zeta^1_Lm2 - zeta^1_Lp2))
+ * @param particles Particles to include in calculation
+ * @return Calculated non-pq part of energy correction
+ */
 static double z_energy(const ParticleRange &particles) {
-  double pref = coulomb.prefactor * 2 * M_PI * ux * uy;
-  int size = 4;
+  const double shift = 0.5 * elc_params.h;
 
-  Utils::Vector4d image_sum{};
+  // zeta sums which are zeta^0_L0, zeta^1_L0, (zeta^0_Lm2 - zeta^0_Lp2),
+  // (zeta^1_Lm2 - zeta^1_Lp2)
+  Utils::Vector4d zeta{};
 
-  double eng = 0;
-  /* for nonneutral systems, this shift gives the background contribution
-     (rsp. for this shift, the DM of the background is zero) */
-  double shift = 0.5 * box_geo.length()[2];
-
-  if (elc_params.dielectric_contrast_on) {
-    if (elc_params.const_pot) {
-      for (auto &p : particles) {
-        image_sum[0] += p.p.q;
-        image_sum[1] += p.p.q * (p.r.p[2] - shift);
-        if (p.r.p[2] < elc_params.space_layer) {
-          image_sum[2] -= elc_params.delta_mid_bot * p.p.q;
-          image_sum[3] -= elc_params.delta_mid_bot * p.p.q * (-p.r.p[2] - shift);
-        }
-        if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-          image_sum[2] += elc_params.delta_mid_top * p.p.q;
-          image_sum[3] += elc_params.delta_mid_top * p.p.q *
-                        (2 * elc_params.h - p.r.p[2] - shift);
-        }
+  if (elc_params.const_pot) {
+    for (auto &p : particles) {
+      const double zpos = p.r.p[2];
+      zeta[0] += p.p.q;
+      zeta[1] += p.p.q * (zpos - shift);
+      if (zpos < elc_params.space_layer) {
+        zeta[2] -= elc_params.delta_mid_bot * p.p.q;
+        zeta[3] -= elc_params.delta_mid_bot * p.p.q * (-zpos - shift);
+      } else if (zpos > (elc_params.h - elc_params.space_layer)) {
+        zeta[2] += elc_params.delta_mid_top * p.p.q;
+        zeta[3] += elc_params.delta_mid_top * p.p.q *
+                   (2 * elc_params.h - zpos - shift);
       }
-    } else {
-      double delta = elc_params.delta_mid_top * elc_params.delta_mid_bot;
-      double fac_delta_mid_bot = elc_params.delta_mid_bot / (1 - delta);
-      double fac_delta_mid_top = elc_params.delta_mid_top / (1 - delta);
-      double fac_delta = delta / (1 - delta);
+    }
+  } else {
+    const double delta = elc_params.delta_mid_top * elc_params.delta_mid_bot;
+    const double fac_delta_mid_bot = elc_params.delta_mid_bot / (1 - delta);
+    const double fac_delta_mid_top = elc_params.delta_mid_top / (1 - delta);
+    const double fac_delta = delta / (1 - delta);
+    const double two_h = 2. * elc_params.h;
 
-      for (auto &p : particles) {
-        image_sum[0] += p.p.q;
-        image_sum[1] += p.p.q * (p.r.p[2] - shift);
-        if (elc_params.dielectric_contrast_on) {
-          if (p.r.p[2] < elc_params.space_layer) {
-            image_sum[2] += fac_delta * (elc_params.delta_mid_bot + 1) * p.p.q;
-            image_sum[3] +=
-                p.p.q * (image_sum_b(elc_params.delta_mid_bot * delta,
-                                     -(2 * elc_params.h + p.r.p[2])) +
-                         image_sum_b(delta, -(2 * elc_params.h - p.r.p[2])));
-          } else {
-            image_sum[2] +=
-                fac_delta_mid_bot * (1 + elc_params.delta_mid_top) * p.p.q;
-            image_sum[3] +=
-                p.p.q * (image_sum_b(elc_params.delta_mid_bot, -p.r.p[2]) +
-                         image_sum_b(delta, -(2 * elc_params.h - p.r.p[2])));
-          }
-          if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-            // note the minus sign here which is required due to |z_i-z_j|
-            image_sum[2] -= fac_delta * (elc_params.delta_mid_top + 1) * p.p.q;
-            image_sum[3] -=
-                p.p.q * (image_sum_t(elc_params.delta_mid_top * delta,
-                                     4 * elc_params.h - p.r.p[2]) +
-                         image_sum_t(delta, 2 * elc_params.h + p.r.p[2]));
-          } else {
-            // note the minus sign here which is required due to |z_i-z_j|
-            image_sum[2] -=
-                fac_delta_mid_top * (1 + elc_params.delta_mid_bot) * p.p.q;
-            image_sum[3] -=
-                p.p.q * (image_sum_t(elc_params.delta_mid_top,
-                                     2 * elc_params.h - p.r.p[2]) +
-                         image_sum_t(delta, 2 * elc_params.h + p.r.p[2]));
-          }
-        }
+    for (auto &p : particles) {
+      const double zpos = p.r.p[2];
+
+      zeta[0] += p.p.q;
+      zeta[1] += p.p.q * (zpos - shift);
+      // calculation of zeta_Lm2
+      if (zpos < elc_params.space_layer) {
+        // this is L_0-1
+        zeta[2] += fac_delta * (elc_params.delta_mid_bot + 1) * p.p.q;
+        zeta[3] += p.p.q * fac_delta *
+                   (-elc_params.delta_mid_bot * image_sum(two_h + zpos) -
+                    image_sum(two_h - zpos));
+      } else {
+        // this is L_00 and L_0+1
+        zeta[2] += fac_delta_mid_bot * (1 + elc_params.delta_mid_top) * p.p.q;
+        zeta[3] += p.p.q * (-fac_delta_mid_bot * image_sum(zpos) -
+                            fac_delta * image_sum(two_h - zpos));
+      }
+      // calculation of zeta_Lp2
+      if (zpos > (elc_params.h - elc_params.space_layer)) {
+        // this is L_0+1
+        zeta[2] -= fac_delta * (elc_params.delta_mid_top + 1) * p.p.q;
+        zeta[3] -= p.p.q * fac_delta *
+                   (elc_params.delta_mid_top * image_sum(2 * two_h - zpos) +
+                    image_sum(two_h + zpos));
+      } else {
+        // this is L_0-1 and L_00
+        zeta[2] -= fac_delta_mid_top * (1 + elc_params.delta_mid_bot) * p.p.q;
+        zeta[3] -= p.p.q * (fac_delta_mid_top * image_sum(two_h - zpos) +
+                            fac_delta * image_sum(two_h + zpos));
       }
     }
   }
-  distribute(size);
+  zeta = boost::mpi::all_reduce(comm_cart, zeta, std::plus<>());
 
-  if (this_node == 0)
-    eng -= pref * (image_sum[1] * image_sum[2] - image_sum[0] * image_sum[3]);
+  const double eng =
+      Utils::pi() * ux * uy * (zeta[1] * zeta[2] - zeta[0] * zeta[3]);
 
-  return eng;
+  return this_node == 0 ? eng : 0;
 }
 
 /*****************************************************************/
+/**
+ * @brief Adding the non-pq part of the z-interaction of L_0 with L_pm2 by the
+ * long range formula resulting in F_i = q_i * (zeta^0_Lm2 - zeta^0_Lp2) given
+ * by equation (4.8) and (4.11)
+ *
+ * @param particles Particles to calculate the force for
+ */
 static void add_z_force(const ParticleRange &particles) {
-  double pref = coulomb.prefactor * 2 * M_PI * ux * uy;
+  double zeta = 0;
 
-  double zforce = 0;
+  auto local_particles = particles;
+  if (elc_params.const_pot) {
+    /* just counter the 2 pi |z| contribution stemming from P3M */
+    for (auto &p : local_particles) {
+      if (p.r.p[2] < elc_params.space_layer)
+        zeta -= elc_params.delta_mid_bot * p.p.q;
+      if (p.r.p[2] > (elc_params.h - elc_params.space_layer))
+        zeta += elc_params.delta_mid_top * p.p.q;
+    }
+  } else {
+    double delta = elc_params.delta_mid_top * elc_params.delta_mid_bot;
+    double fac_delta_mid_bot = elc_params.delta_mid_bot / (1 - delta);
+    double fac_delta_mid_top = elc_params.delta_mid_top / (1 - delta);
+    double fac_delta = delta / (1 - delta);
 
-  if (elc_params.dielectric_contrast_on) {
-    auto local_particles = particles;
-    int size = 1;
-    if (elc_params.const_pot) {
-      /* just counter the 2 pi |z| contribution stemming from P3M */
-      for (auto &p : local_particles) {
-        if (p.r.p[2] < elc_params.space_layer)
-          zforce -= elc_params.delta_mid_bot * p.p.q;
-        if (p.r.p[2] > (elc_params.h - elc_params.space_layer))
-          zforce += elc_params.delta_mid_top * p.p.q;
+    for (auto &p : local_particles) {
+      const double zpos = p.r.p[2];
+      // calculation of zeta_Lm2
+      if (zpos < elc_params.space_layer) {
+        // this is L_0-1
+        zeta += fac_delta * (elc_params.delta_mid_bot + 1) * p.p.q;
+      } else {
+        // this is L_00 and L_0+1
+        zeta += fac_delta_mid_bot * (1 + elc_params.delta_mid_top) * p.p.q;
       }
-    } else {
-      double delta = elc_params.delta_mid_top * elc_params.delta_mid_bot;
-      double fac_delta_mid_bot = elc_params.delta_mid_bot / (1 - delta);
-      double fac_delta_mid_top = elc_params.delta_mid_top / (1 - delta);
-      double fac_delta = delta / (1 - delta);
 
-      for (auto &p : local_particles) {
-        if (p.r.p[2] < elc_params.space_layer) {
-          zforce += fac_delta * (elc_params.delta_mid_bot + 1) * p.p.q;
-        } else {
-          zforce +=
-              fac_delta_mid_bot * (1 + elc_params.delta_mid_top) * p.p.q;
-        }
-
-        if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-          // note the minus sign here which is required due to |z_i-z_j|
-          zforce -= fac_delta * (elc_params.delta_mid_top + 1) * p.p.q;
-        } else {
-          // note the minus sign here which is required due to |z_i-z_j|
-          zforce -=
-              fac_delta_mid_top * (1 + elc_params.delta_mid_bot) * p.p.q;
-        }
+      // calculation of zeta_Lp2
+      if (zpos > (elc_params.h - elc_params.space_layer)) {
+        // this is L_0+1
+        zeta -= fac_delta * (elc_params.delta_mid_top + 1) * p.p.q;
+      } else {
+        // this is L_00 and L_0-1
+        zeta -= fac_delta_mid_top * (1 + elc_params.delta_mid_bot) * p.p.q;
       }
     }
 
-    zforce *= pref;
+    zeta *= coulomb.prefactor * Utils::pi() * ux * uy;
 
-    zforce = boost::mpi::all_reduce(comm_cart, zforce, std::plus<>());
+    zeta = boost::mpi::all_reduce(comm_cart, zeta, std::plus<>());
 
     for (auto &p : local_particles) {
-      p.f.f[2] += zforce * p.p.q;
+      p.f.f[2] += zeta * p.p.q;
     }
   }
 }
@@ -516,7 +530,8 @@ inline Utils::VectorXd<8> fourier_factors(const size_t index_x,
 }
 
 /**
- * @brief Apply the factor_p to the first 4 elements of the array and factor_n to the second half
+ * @brief Apply the factor_p to the first 4 elements of the array and factor_n
+ * to the second half
  * @param vector vector to multiply the factors with
  * @param factor_p factor for the first half
  * @param factor_n factor for the second half
@@ -756,8 +771,10 @@ static double PQ_energy(const double fpq, const size_t n_particles,
 void ELC_add_force(const ParticleRange &particles) {
   double omega;
 
-  auto const n_scxcache = size_t(ceil(elc_params.far_cut * box_geo.length()[0]) + 1);
-  auto const n_scycache = size_t(ceil(elc_params.far_cut * box_geo.length()[1]) + 1);
+  auto const n_scxcache =
+      size_t(ceil(elc_params.far_cut * box_geo.length()[0]) + 1);
+  auto const n_scycache =
+      size_t(ceil(elc_params.far_cut * box_geo.length()[1]) + 1);
 
   prepare_sc_cache(particles, n_scxcache, ux, n_scycache, uy);
   part_fac.resize(8 * particles.size());
@@ -770,7 +787,9 @@ void ELC_add_force(const ParticleRange &particles) {
   const int p_range =
       static_cast<size_t>(elc_params.far_cut * box_geo.length()[0] + 1);
   for (size_t p = 0; p < p_range; ++p) {
-    for (size_t q = 0; sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q)) < elc_params.far_cut; ++q) {
+    for (size_t q = 0;
+         sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q)) < elc_params.far_cut;
+         ++q) {
       // skip the p^2 + p^2 == 0 term
       if (p == 0 and q == 0) {
         continue;
@@ -790,8 +809,10 @@ double ELC_energy(const ParticleRange &particles) {
     eng += z_energy(particles);
   }
 
-  auto const n_scxcache = int(ceil(elc_params.far_cut * box_geo.length()[0]) + 1);
-  auto const n_scycache = int(ceil(elc_params.far_cut * box_geo.length()[1]) + 1);
+  auto const n_scxcache =
+      int(ceil(elc_params.far_cut * box_geo.length()[0]) + 1);
+  auto const n_scycache =
+      int(ceil(elc_params.far_cut * box_geo.length()[1]) + 1);
   prepare_sc_cache(particles, n_scxcache, ux, n_scycache, uy);
   part_fac.resize(8 * particles.size());
   auto const n_particles = particles.size();
@@ -800,7 +821,9 @@ double ELC_energy(const ParticleRange &particles) {
   const int p_range =
       static_cast<size_t>(elc_params.far_cut * box_geo.length()[0] + 1);
   for (size_t p = 0; p < p_range; ++p) {
-    for (size_t q = 0; sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q)) < elc_params.far_cut; ++q) {
+    for (size_t q = 0;
+         sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q)) < elc_params.far_cut;
+         ++q) {
       // skip the p^2 + p^2 == 0 term
       if (p == 0 and q == 0) {
         continue;
