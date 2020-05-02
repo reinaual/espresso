@@ -67,6 +67,8 @@ typedef struct {
   double delta_mid_top;
   /// dielectric contrast in the lower part of the simulation cell.
   double delta_mid_bot;
+  /// product of the two dielectric contrasts.
+  double delta;
   /// @brief Flag whether a const. potential is applied.
   bool const_pot;
   /// @brief Const. potential.
@@ -77,10 +79,10 @@ typedef struct {
    *  only 1/3 of that.
    */
   double minimal_dist;
-  /** Layer around the dielectric contrast in which we trick around. */
+  /** length for bottom image charges to be calculated  */
   double space_layer;
-  /** The space that is finally left. */
-  double space_box;
+  /** length for top image charges to be calculated */
+  double top_space_layer;
   /** Up to where particles can be found. */
   double h;
 
@@ -142,7 +144,8 @@ void ELC_p3m_charge_assign_both(const ParticleRange &particles);
 void ELC_p3m_charge_assign_image(const ParticleRange &particles);
 
 /// take into account the virtual charges in the charge sums, used in energy.cpp
-void ELC_P3M_modify_p3m_sums_both(const ParticleRange &particles);
+template <bool, bool>
+void ELC_P3M_modify_p3m_sums(const ParticleRange &particles);
 /// take into account the virtual charges in the charge sums, used in energy.cpp
 void ELC_P3M_modify_p3m_sums_image(const ParticleRange &particles);
 
