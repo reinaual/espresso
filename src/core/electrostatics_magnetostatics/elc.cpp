@@ -131,7 +131,7 @@ static std::vector<SCCache> sc_cache(const ParticleRange &particles, int n_freq,
   std::vector<SCCache> ret((n_freq + 1) * n_part);
 
   for (size_t freq = 0; freq <= n_freq; freq++) {
-    double pref = C_2PI * u * freq;
+    double pref = 2 * Utils::pi() * u * freq;
 
     size_t o = freq * n_part;
     for (auto const &part : particles) {
@@ -492,7 +492,7 @@ inline double sum_prefactor_dielectric(const double z, const double omega) {
   /* the divisor has the opposite sign compared to the paper but matches the
      previous implementation */
   return elc_params.delta * exp(-omega * z) /
-         (1. - elc_params.delta * exp(-4 * Utils::pi() * elc_params.h));
+         (1. - elc_params.delta * exp(4 * Utils::pi() * elc_params.h));
 }
 
 /**
@@ -602,7 +602,7 @@ static void add_PQ_force(const ParticleRange &particles,
 }
 
 /**
- * @brief Calculate the factors for the pq-summation
+ * @brief Calculate the factors for the pq-summation according to equation (3.10)
  * @param fpq factor f_pq
  * @param n_particles number of particles to iterate over
  * @param part_sum summation values
@@ -610,7 +610,6 @@ static void add_PQ_force(const ParticleRange &particles,
  */
 static double PQ_energy(const double fpq, const size_t n_particles,
                         const Utils::VectorXd<8> &part_sum) {
-  // return p,q-summation part of the energy according to equation (3.10)
   double eng = 0;
 
   // calculate the image sums
@@ -1148,6 +1147,10 @@ void ELC_P3M_modify_p3m_sums(ParticleRange const &particles) {
 
 void ELC_P3M_modify_p3m_sums_image(const ParticleRange &particles) {
   ELC_P3M_modify_p3m_sums<false, true>(particles);
+}
+
+void ELC_P3M_modify_p3m_sums_both(const ParticleRange &particles) {
+  ELC_P3M_modify_p3m_sums<true, true>(particles);
 }
 
 void ELC_P3M_restore_p3m_sums(const ParticleRange &particles) {
