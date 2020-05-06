@@ -94,6 +94,7 @@ static std::vector<SCCache> scycache;
 
 /** \name p,q <> 0 per frequency code */
 /*@{*/
+template <bool dielectric>
 static Utils::VectorXd<8> setup_PQ(int p, int q, double omega,
                                    const ParticleRange &particles);
 static void add_PQ_force(const ParticleRange &particles,
@@ -101,7 +102,9 @@ static void add_PQ_force(const ParticleRange &particles,
 static double PQ_energy(double fpq, int n_particles,
                         Utils::VectorXd<8> &part_sum);
 /*@}*/
+template <bool dielectric>
 static void add_dipole_force(const ParticleRange &particles);
+template <bool dielectric>
 static double dipole_energy(const ParticleRange &particles);
 static double z_energy(const ParticleRange &particles);
 static void add_z_force(const ParticleRange &particles);
@@ -125,13 +128,13 @@ void ELC_setup_constants() {
  * @return Calculated values.
  */
 template <size_t dir>
-static std::vector<SCCache> sc_cache(const ParticleRange &particles, int n_freq,
-                                     double u) {
+static std::vector<SCCache> sc_cache(const ParticleRange &particles,
+                                     const int n_freq, const double u) {
   auto const n_part = particles.size();
   std::vector<SCCache> ret((n_freq + 1) * n_part);
 
   for (size_t freq = 0; freq <= n_freq; freq++) {
-    double pref = 2 * Utils::pi() * u * freq;
+    const double pref = 2 * Utils::pi() * u * freq;
 
     size_t o = freq * n_part;
     for (auto const &part : particles) {
@@ -157,8 +160,10 @@ static void prepare_sc_cache(const ParticleRange &particles, int n_freq_x,
  * @brief Calculate and add the dipole correction force with forced tinfoil
  * boundary condition in the P3M method (see @cite yeh99a)
  *
+ * @tparam dielectric include dielectric contrast
  * @param particles Particle to calculate dipole moment and correction for
  */
+template <bool dielectric>
 static void add_dipole_force(const ParticleRange &particles) {
   const double pref = coulomb.prefactor * 4 * Utils::pi() * ux * uy * uz;
 
@@ -175,7 +180,7 @@ static void add_dipole_force(const ParticleRange &particles) {
     moments[0] += q * zpos;
     moments[1] += q * (zpos - shift);
 
-    if (elc_params.dielectric_contrast_on) {
+    if (dielectric) {
       if (zpos < elc_params.space_layer) {
         moments[1] += elc_params.delta_mid_bot * q * (-zpos - shift);
       }
@@ -206,11 +211,22 @@ static void add_dipole_force(const ParticleRange &particles) {
   }
 }
 
+inline double sum_energy_correction(const double charge, const double z_dipole,
+                                    const double z_pos_sqr) {
+  return Utils::sqr(z_dipole) - charge * z_pos_sqr -
+         Utils::sqr(elc_params.h * charge) / 12;
+}
+
 /**
  * @brief Calculate the dipole correction energy for vacuum boundary conditions
+ * (second last term of eq. (3.10), the last term is not necessary since we use
+ * tinfoil boundary conditions in P3M)
+ *
+ * @tparam dielectric include dielectric contrast
  * @param particles Particle to calculate correction for
  * @return Dipole correction energy
  */
+template <bool dielectric>
 static double dipole_energy(const ParticleRange &particles) {
   const double pref = 2 * Utils::pi() * ux * uy * uz;
   double shift = 0.5 * elc_params.h;
@@ -235,7 +251,7 @@ static double dipole_energy(const ParticleRange &particles) {
     moments[4] += q * (Utils::sqr(zpos - shift));
     moments[6] += q * zpos;
 
-    if (elc_params.dielectric_contrast_on) {
+    if (dielectric) {
       if (zpos < elc_params.space_layer) {
         moments[1] += elc_params.delta_mid_bot * q;
         moments[3] += elc_params.delta_mid_bot * q * (-zpos - shift);
@@ -254,25 +270,36 @@ static double dipole_energy(const ParticleRange &particles) {
 
   moments = boost::mpi::all_reduce(comm_cart, moments, std::plus<>());
 
-  double eng = Utils::sqr(moments[2]) - moments[0] * moments[4] -
-               Utils::sqr(elc_params.h * moments[0]) / 12;
+  const double total_charge = moments[0] + moments[1];
+  const double total_dipole = moments[2] + moments[3];
+  const double total_pos_sqr = moments[4] + moments[5];
 
-  if (elc_params.dielectric_contrast_on) {
-    if (elc_params.const_pot) {
-      // zero potential difference contribution
-      eng += pref * height_inverse / uz * Utils::sqr(moments[6]);
-      // external potential shift contribution
-      eng -= 2 * elc_params.pot_diff * height_inverse * moments[6];
-    }
+  double eng = sum_energy_correction(moments[0], moments[2], moments[4]);
 
-    /*
-    // counter the P3M homogeneous background contribution to the
-    // boundaries. We never need that, since a homogeneous background
-    // spanning the artificial boundary layers is aphysical.
-    eng += (-(moments[1] * moments[4] + moments[0] * moments[5]) -
-                   (1. - 2. / 3.) * moments[0] * moments[1] *
-                       Utils::sqr(box_geo.length()[2]));
-     */
+  if (dielectric) {
+    //    if (elc_params.const_pot) {
+    //      // zero potential difference contribution
+    //      eng += height_inverse * box_geo.length()[2] *
+    //      Utils::sqr(moments[6]);
+    //      // external potential shift contribution
+    //      eng -= 2 * elc_params.pot_diff * height_inverse * moments[6];
+    //    }
+
+    // counter the P3M homogeneous background contribution
+    // L_T system
+
+    eng += sum_energy_correction(total_charge, total_dipole, total_pos_sqr);
+    //        eng -= total_charge * (total_pos_sqr - elc_params.h * total_dipole
+    //        +
+    //                               Utils::sqr(elc_params.h) * total_charge /
+    //                               6);
+
+    // L_+-1 system
+    //        eng += moments[1] * (moments[5] - elc_params.h * moments[3] +
+    //                             Utils::sqr(elc_params.h) * moments[1] / 6);
+
+    eng -= sum_energy_correction(moments[1], moments[3], moments[5]);
+    eng *= 0.5;
   }
 
   return this_node == 0 ? pref * eng : 0;
@@ -498,6 +525,7 @@ inline double sum_prefactor_dielectric(const double z, const double omega) {
 /**
  * @brief Calulate pq summation parts
  *
+ * @tparam dielectric include dielectric contrast
  * @param p first fourier index
  * @param q second fourier index
  * @param omega 2 * pi * f_pq
@@ -505,6 +533,7 @@ inline double sum_prefactor_dielectric(const double z, const double omega) {
  *
  * @return Calculated sums.
  */
+template <bool dielectric>
 static Utils::VectorXd<8> setup_PQ(const int p, const int q, const double omega,
                                    const ParticleRange &particles) {
   Utils::VectorXd<8> part_sum{};
@@ -536,7 +565,7 @@ static Utils::VectorXd<8> setup_PQ(const int p, const int q, const double omega,
         sum_prefactor_prime(box_geo.length()[2] - zpos, omega);
     auto out = apply_factors(ffactors, x_factor, inv_x_factor);
 
-    if (elc_params.dielectric_contrast_on) {
+    if (dielectric) {
       // chi_Lm2
       double factor_top;
       if (zpos < elc_params.space_layer) {
@@ -602,7 +631,8 @@ static void add_PQ_force(const ParticleRange &particles,
 }
 
 /**
- * @brief Calculate the factors for the pq-summation according to equation (3.10)
+ * @brief Calculate the factors for the pq-summation according to equation
+ * (3.10)
  * @param fpq factor f_pq
  * @param n_particles number of particles to iterate over
  * @param part_sum summation values
@@ -646,18 +676,26 @@ static double PQ_energy(const double fpq, const size_t n_particles,
  * @param particles Particles to calculate sums and correct forces for
  */
 void ELC_add_force(const ParticleRange &particles) {
+  std::function<Utils::VectorXd<8>(const size_t, const size_t, const double,
+                                   const ParticleRange)>
+      local_setup_PQ;
+
+  if (elc_params.dielectric_contrast_on) {
+    add_dipole_force<true>(particles);
+    add_z_force(particles);
+    local_setup_PQ = setup_PQ<true>;
+  } else {
+    add_dipole_force<false>(particles);
+    local_setup_PQ = setup_PQ<false>;
+  }
+
   auto const n_scxcache =
-      size_t(ceil(elc_params.far_cut * box_geo.length()[0]) + 1);
+      static_cast<size_t>(ceil(elc_params.far_cut * box_geo.length()[0]) + 1);
   auto const n_scycache =
-      size_t(ceil(elc_params.far_cut * box_geo.length()[1]) + 1);
+      static_cast<size_t>(ceil(elc_params.far_cut * box_geo.length()[1]) + 1);
 
   prepare_sc_cache(particles, n_scxcache, ux, n_scycache, uy);
   part_fac.resize(8 * particles.size());
-
-  add_dipole_force(particles);
-  if (elc_params.dielectric_contrast_on) {
-    add_z_force(particles);
-  }
 
   const int p_range =
       static_cast<size_t>(elc_params.far_cut * box_geo.length()[0] + 1);
@@ -671,7 +709,8 @@ void ELC_add_force(const ParticleRange &particles) {
       }
 
       const double fpq = sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
-      const auto part_sum = setup_PQ(p, q, 2 * Utils::pi() * fpq, particles);
+      const auto part_sum =
+          local_setup_PQ(p, q, 2 * Utils::pi() * fpq, particles);
 
       add_PQ_force(particles, part_sum);
     }
@@ -685,15 +724,23 @@ void ELC_add_force(const ParticleRange &particles) {
  * @return Layer correction energy
  */
 double ELC_energy(const ParticleRange &particles) {
-  double eng = dipole_energy(particles);
+  double eng;
+  std::function<Utils::VectorXd<8>(size_t, size_t, double, const ParticleRange)>
+      local_setup_PQ;
+
   if (elc_params.dielectric_contrast_on) {
+    eng = dipole_energy<true>(particles);
     eng += z_energy(particles);
+    local_setup_PQ = setup_PQ<true>;
+  } else {
+    eng = dipole_energy<false>(particles);
+    local_setup_PQ = setup_PQ<false>;
   }
 
   auto const n_scxcache =
-      int(ceil(elc_params.far_cut * box_geo.length()[0]) + 1);
+      static_cast<size_t>(ceil(elc_params.far_cut * box_geo.length()[0]) + 1);
   auto const n_scycache =
-      int(ceil(elc_params.far_cut * box_geo.length()[1]) + 1);
+      static_cast<size_t>(ceil(elc_params.far_cut * box_geo.length()[1]) + 1);
   prepare_sc_cache(particles, n_scxcache, ux, n_scycache, uy);
   auto const n_particles = particles.size();
   part_fac.resize(8 * n_particles);
@@ -711,7 +758,8 @@ double ELC_energy(const ParticleRange &particles) {
       }
 
       const double fpq = sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
-      const auto part_sum = setup_PQ(p, q, 2 * Utils::pi() * fpq, particles);
+      const auto part_sum =
+          local_setup_PQ(p, q, 2 * Utils::pi() * fpq, particles);
 
       pq_energy += PQ_energy(fpq, n_particles, part_sum);
     }
@@ -980,9 +1028,9 @@ void ELC_p3m_charge_assign_image(const ParticleRange &particles) {
 ////////////////////////////////////////////////////////////////////////////////////
 
 void ELC_P3M_dielectric_layers_force_contribution(Particle const &p1,
-                                            Particle const &p2,
-                                            Utils::Vector3d &force1,
-                                            Utils::Vector3d &force2) {
+                                                  Particle const &p2,
+                                                  Utils::Vector3d &force1,
+                                                  Utils::Vector3d &force2) {
   Utils::Vector3d pos;
 
   if (p1.r.p[2] < elc_params.space_layer) {
@@ -1094,9 +1142,7 @@ double ELC_P3M_dielectric_layers_energy_self(ParticleRange const &particles) {
       pos[2] = -p.r.p[2];
 
       eng += p3m_pair_energy(q, get_mi_vector(p.r.p, pos, box_geo).norm());
-    }
-
-    if (p.r.p[2] > elc_params.top_space_layer) {
+    } else if (p.r.p[2] > elc_params.top_space_layer) {
       q = elc_params.delta_mid_top * p.p.q * p.p.q;
       pos[0] = p.r.p[0];
       pos[1] = p.r.p[1];
@@ -1128,8 +1174,7 @@ void ELC_P3M_modify_p3m_sums(ParticleRange const &particles) {
           sums[0] += 1.0;
           sums[1] += Utils::sqr(elc_params.delta_mid_bot * p.p.q);
           sums[2] += elc_params.delta_mid_bot * p.p.q;
-        }
-        if (p.r.p[2] > elc_params.top_space_layer) {
+        } else if (p.r.p[2] > elc_params.top_space_layer) {
           sums[0] += 1.0;
           sums[1] += Utils::sqr(elc_params.delta_mid_top * p.p.q);
           sums[2] += elc_params.delta_mid_top * p.p.q;
@@ -1140,7 +1185,7 @@ void ELC_P3M_modify_p3m_sums(ParticleRange const &particles) {
 
   sums = boost::mpi::all_reduce(comm_cart, sums, std::plus<>());
 
-  p3m.sum_qpart = (int)(sums[0] + 0.1);
+  p3m.sum_qpart = static_cast<int>(sums[0]);
   p3m.sum_q2 = sums[1];
   p3m.square_sum_q = Utils::sqr(sums[2]);
 }
