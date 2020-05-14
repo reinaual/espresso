@@ -261,16 +261,20 @@ void calc_long_range_force(const ParticleRange &particles) {
 #ifdef P3M
   case COULOMB_ELC_P3M:
     if (elc_params.dielectric_contrast_on) {
-      ELC_P3M_modify_p3m_sums_both(particles);
+      // assign real and image charges to P3M
+      ELC_P3M_modify_p3m_sums<true, true>(particles);
       ELC_p3m_charge_assign_both(particles);
       ELC_P3M_self_forces(particles);
-    } else
+    } else {
       p3m_charge_assign(particles);
+    }
 
     p3m_calc_kspace_forces(true, false, particles);
 
-    if (elc_params.dielectric_contrast_on)
-      ELC_P3M_restore_p3m_sums(particles);
+    if (elc_params.dielectric_contrast_on) {
+      // restore P3M sums
+      ELC_P3M_modify_p3m_sums<true, false>(particles);
+    }
 
     ELC_add_force(particles);
 
@@ -328,27 +332,27 @@ void calc_energy_long_range(Observable_stat &energy,
     energy.coulomb[1] = p3m_calc_kspace_forces(false, true, particles);
     break;
   case COULOMB_ELC_P3M:
-    // assign the original charges first
-    // they may not have been assigned yet
+    // assign the original charges first they may not have been assigned yet
     p3m_charge_assign(particles);
-    if (!elc_params.dielectric_contrast_on)
+    if (!elc_params.dielectric_contrast_on) {
       energy.coulomb[1] = p3m_calc_kspace_forces(false, true, particles);
-    else {
-      energy.coulomb[1] = 0.5 * p3m_calc_kspace_forces(false, true, particles);
-      energy.coulomb[1] +=
-          0.5 * ELC_P3M_dielectric_layers_energy_self(particles);
+    } else {
+      energy.coulomb[1] = p3m_calc_kspace_forces(false, true, particles);
+      energy.coulomb[1] += ELC_P3M_dielectric_layers_energy_self(particles);
 
       //  assign both original and image charges now
       ELC_p3m_charge_assign_both(particles);
       ELC_P3M_modify_p3m_sums_both(particles);
 
-      energy.coulomb[1] += 0.5 * p3m_calc_kspace_forces(false, true, particles);
+      energy.coulomb[1] += p3m_calc_kspace_forces(false, true, particles);
 
       // assign only the image charges now
       ELC_p3m_charge_assign_image(particles);
       ELC_P3M_modify_p3m_sums_image(particles);
 
-      energy.coulomb[1] -= 0.5 * p3m_calc_kspace_forces(false, true, particles);
+      energy.coulomb[1] -= p3m_calc_kspace_forces(false, true, particles);
+
+      energy.coulomb[1] *= 0.5;
 
       // restore modified sums
       ELC_P3M_restore_p3m_sums(particles);
@@ -426,7 +430,8 @@ int elc_sanity_check() {
   case COULOMB_ELC_P3M:
 
   case COULOMB_P3M:
-    // enforcing the tinfoil boundary condition to prevent the dipole corrections
+    // enforcing the tinfoil boundary condition to prevent the dipole
+    // corrections
     p3m.params.epsilon = P3M_EPSILON_METALLIC;
     coulomb.method = COULOMB_ELC_P3M;
     return ES_OK;

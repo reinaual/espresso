@@ -143,7 +143,6 @@ void ELC_p3m_charge_assign_both(const ParticleRange &particles);
 /// assign the additional, virtual charges, used only in energy.cpp
 void ELC_p3m_charge_assign_image(const ParticleRange &particles);
 
-/// take into account the virtual or real charges in the charge sums, used in energy.cpp
 template <bool, bool>
 void ELC_P3M_modify_p3m_sums(const ParticleRange &particles);
 /// take into account the virtual charges in the charge sums, used in energy.cpp

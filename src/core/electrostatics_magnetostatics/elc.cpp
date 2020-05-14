@@ -239,7 +239,7 @@ static double dipole_energy(const ParticleRange &particles) {
   moments[3] = 0; // sum q_i (z_i - L/2)   boundary layers
   moments[4] = 0; // sum q_i (z_i - L/2)^2 primary box
   moments[5] = 0; // sum q_i (z_i - L/2)^2 boundary layers
-  moments[6] = 0; // sum q_i z_i           primary box
+  moments[6] = 0; // sum q_i z_i           primary layers
    */
 
   for (auto &p : particles) {
@@ -257,8 +257,7 @@ static double dipole_energy(const ParticleRange &particles) {
         moments[3] += elc_params.delta_mid_bot * q * (-zpos - shift);
         moments[5] +=
             elc_params.delta_mid_bot * q * (Utils::sqr(-zpos - shift));
-      }
-      if (zpos > elc_params.top_space_layer) {
+      } else if (zpos > elc_params.top_space_layer) {
         moments[1] += elc_params.delta_mid_top * q;
         moments[3] +=
             elc_params.delta_mid_top * q * (2 * elc_params.h - zpos - shift);
@@ -270,39 +269,34 @@ static double dipole_energy(const ParticleRange &particles) {
 
   moments = boost::mpi::all_reduce(comm_cart, moments, std::plus<>());
 
-  const double total_charge = moments[0] + moments[1];
-  const double total_dipole = moments[2] + moments[3];
-  const double total_pos_sqr = moments[4] + moments[5];
-
+  // counter the P3M homogeneous background contribution
+  // L_0 system
   double eng = sum_energy_correction(moments[0], moments[2], moments[4]);
 
   if (dielectric) {
-    //    if (elc_params.const_pot) {
-    //      // zero potential difference contribution
-    //      eng += height_inverse * box_geo.length()[2] *
-    //      Utils::sqr(moments[6]);
-    //      // external potential shift contribution
-    //      eng -= 2 * elc_params.pot_diff * height_inverse * moments[6];
-    //    }
-
-    // counter the P3M homogeneous background contribution
     // L_T system
+    const double total_charge = moments[0] + moments[1];
+    const double total_z_dipole = moments[2] + moments[3];
+    const double total_z_pos_sqr = moments[4] + moments[5];
 
-    eng += sum_energy_correction(total_charge, total_dipole, total_pos_sqr);
-    //        eng -= total_charge * (total_pos_sqr - elc_params.h * total_dipole
-    //        +
-    //                               Utils::sqr(elc_params.h) * total_charge /
-    //                               6);
+    eng += sum_energy_correction(total_charge, total_z_dipole, total_z_pos_sqr);
 
     // L_+-1 system
-    //        eng += moments[1] * (moments[5] - elc_params.h * moments[3] +
-    //                             Utils::sqr(elc_params.h) * moments[1] / 6);
-
     eng -= sum_energy_correction(moments[1], moments[3], moments[5]);
     eng *= 0.5;
   }
 
-  return this_node == 0 ? pref * eng : 0;
+  eng *= pref;
+
+  if (dielectric and elc_params.const_pot) {
+    // zero potential difference contribution
+    // eng += height_inverse * box_geo.length()[2] * Utils::sqr(moments[2]);
+    // external potential shift contribution
+    // TODO figure out if this could be replaced with momentum[2]
+    eng += elc_params.pot_diff * height_inverse * moments[6];
+  }
+
+  return this_node == 0 ? eng : 0;
 }
 
 /*****************************************************************/
@@ -563,12 +557,19 @@ static Utils::VectorXd<8> setup_PQ(const int p, const int q, const double omega,
     const double x_factor = sum_prefactor_prime(zpos, omega);
     const double inv_x_factor =
         sum_prefactor_prime(box_geo.length()[2] - zpos, omega);
-    auto out = apply_factors(ffactors, x_factor, inv_x_factor);
+    const auto out = apply_factors(ffactors, x_factor, inv_x_factor);
 
     if (dielectric) {
-      // chi_Lm2
+      // chi_Lm2 with factor and L_m1 with sum
       double factor_top;
       if (zpos < elc_params.space_layer) {
+        // TODO check this L_-1 factor
+        // this is L_-1
+        const double top_factor = sum_prefactor_prime(-zpos, omega);
+        const double bot_factor = sum_prefactor_prime(zpos, omega);
+        part_sum += elc_params.delta_mid_bot *
+                    apply_factors(ffactors, top_factor, bot_factor);
+
         // this is L_0-1
         factor_top = elc_params.delta *
                      (elc_params.delta_mid_bot *
@@ -584,6 +585,13 @@ static Utils::VectorXd<8> setup_PQ(const int p, const int q, const double omega,
       // chi_Lp2
       double factor_bot;
       if (zpos > elc_params.top_space_layer) {
+        // TODO check this L_+1 factor
+        // this is L_+1
+        const double top_factor = sum_prefactor_prime(zpos - two_h, omega);
+        const double bot_factor = sum_prefactor_prime(two_h - zpos, omega);
+        part_sum += elc_params.delta_mid_top *
+                    apply_factors(ffactors, top_factor, bot_factor);
+
         // this is L_0+1
         factor_bot = elc_params.delta *
                      (elc_params.delta_mid_top *
@@ -597,7 +605,7 @@ static Utils::VectorXd<8> setup_PQ(const int p, const int q, const double omega,
             elc_params.delta * sum_prefactor_dielectric(two_h + zpos, omega);
       }
 
-      out += apply_factors(ffactors, factor_bot, factor_top);
+      part_sum += apply_factors(ffactors, factor_bot, factor_top);
     }
 
     for (int i = 0; i < 8; i++) {
@@ -779,10 +787,10 @@ void ELC_tune(const double error) {
   double lz = box_geo.length()[2];
 
   // TODO where does this correction come from?
-  if (elc_params.dielectric_contrast_on) {
-    // adjust lz according to dielectric layer method
-    lz = elc_params.h + elc_params.space_layer;
-  }
+  //  if (elc_params.dielectric_contrast_on) {
+  //    // adjust lz according to dielectric layer method
+  //    lz = elc_params.h + elc_params.space_layer;
+  //  }
 
   if (h < 0) {
     runtimeErrorMsg() << "ELC box height is negative!";
@@ -810,6 +818,9 @@ void ELC_tune(const double error) {
     }
   } while (err > error);
   elc_params.far_cut -= min_inv_boxl;
+
+  runtimeWarningMsg() << "ELC tuning: " << elc_params.far_cut << " with  "
+                      << err;
 }
 
 int ELC_sanity_checks() {
@@ -986,9 +997,7 @@ void assign_image_charge(const Particle &p) {
     auto const pos = Utils::Vector3d{p.r.p[0], p.r.p[1], -p.r.p[2]};
 
     p3m_assign_charge(q_eff, pos);
-  }
-
-  if (p.r.p[2] > elc_params.top_space_layer) {
+  } else if (p.r.p[2] > elc_params.top_space_layer) {
     auto const q_eff = elc_params.delta_mid_top * p.p.q;
     auto const pos =
         Utils::Vector3d{p.r.p[0], p.r.p[1], 2 * elc_params.h - p.r.p[2]};
@@ -1041,9 +1050,7 @@ void ELC_P3M_dielectric_layers_force_contribution(Particle const &p1,
     auto const d = get_mi_vector(p2.r.p, pos, box_geo);
 
     p3m_add_pair_force(q, d, d.norm(), force2);
-  }
-
-  if (p1.r.p[2] > elc_params.top_space_layer) {
+  } else if (p1.r.p[2] > elc_params.top_space_layer) {
     const double q = elc_params.delta_mid_top * p1.p.q * p2.p.q;
     pos[0] = p1.r.p[0];
     pos[1] = p1.r.p[1];
@@ -1061,9 +1068,7 @@ void ELC_P3M_dielectric_layers_force_contribution(Particle const &p1,
     auto const d = get_mi_vector(p1.r.p, pos, box_geo);
 
     p3m_add_pair_force(q, d, d.norm(), force1);
-  }
-
-  if (p2.r.p[2] > elc_params.top_space_layer) {
+  } else if (p2.r.p[2] > elc_params.top_space_layer) {
     const double q = elc_params.delta_mid_top * p1.p.q * p2.p.q;
     pos[0] = p2.r.p[0];
     pos[1] = p2.r.p[1];
@@ -1080,10 +1085,7 @@ double ELC_P3M_dielectric_layers_energy_contribution(Particle const &p1,
                                                      Particle const &p2) {
   Utils::Vector3d pos;
   double q;
-  double tp2;
   double eng = 0.0;
-
-  tp2 = p2.r.p[2];
 
   if (p1.r.p[2] < elc_params.space_layer) {
     q = elc_params.delta_mid_bot * p1.p.q * p2.p.q;
@@ -1092,9 +1094,7 @@ double ELC_P3M_dielectric_layers_energy_contribution(Particle const &p1,
     pos[2] = -p1.r.p[2];
 
     eng += p3m_pair_energy(q, get_mi_vector(p2.r.p, pos, box_geo).norm());
-  }
-
-  if (p1.r.p[2] > elc_params.top_space_layer) {
+  } else if (p1.r.p[2] > elc_params.top_space_layer) {
     q = elc_params.delta_mid_top * p1.p.q * p2.p.q;
     pos[0] = p1.r.p[0];
     pos[1] = p1.r.p[1];
@@ -1103,20 +1103,18 @@ double ELC_P3M_dielectric_layers_energy_contribution(Particle const &p1,
     eng += p3m_pair_energy(q, get_mi_vector(p2.r.p, pos, box_geo).norm());
   }
 
-  if (tp2 < elc_params.space_layer) {
+  if (p2.r.p[2] < elc_params.space_layer) {
     q = elc_params.delta_mid_bot * p1.p.q * p2.p.q;
     pos[0] = p2.r.p[0];
     pos[1] = p2.r.p[1];
-    pos[2] = -tp2;
+    pos[2] = -p2.r.p[2];
 
     eng += p3m_pair_energy(q, get_mi_vector(p1.r.p, pos, box_geo).norm());
-  }
-
-  if (tp2 > elc_params.top_space_layer) {
+  } else if (p2.r.p[2] > elc_params.top_space_layer) {
     q = elc_params.delta_mid_top * p1.p.q * p2.p.q;
     pos[0] = p2.r.p[0];
     pos[1] = p2.r.p[1];
-    pos[2] = 2 * elc_params.h - tp2;
+    pos[2] = 2 * elc_params.h - p2.r.p[2];
 
     eng += p3m_pair_energy(q, get_mi_vector(p1.r.p, pos, box_geo).norm());
   }
@@ -1131,10 +1129,7 @@ double ELC_P3M_dielectric_layers_energy_self(ParticleRange const &particles) {
   double q;
   double eng = 0.0;
 
-  // Loop cell neighbors
   for (auto const &p : particles) {
-    // Loop neighbor cell particles
-
     if (p.r.p[2] < elc_params.space_layer) {
       q = elc_params.delta_mid_bot * p.p.q * p.p.q;
       pos[0] = p.r.p[0];
@@ -1154,15 +1149,19 @@ double ELC_P3M_dielectric_layers_energy_self(ParticleRange const &particles) {
   return eng;
 }
 
-/////////////////////////////////////////////////////////////////////////////////
-
+/**
+ * @brief Modify the charge sums in the P3M method
+ *
+ * @tparam include_particles include real particles in sums
+ * @tparam include_images include image particles in sums
+ * @param particles Particles to calculate sums for
+ */
 template <bool include_particles, bool include_images>
 void ELC_P3M_modify_p3m_sums(ParticleRange const &particles) {
   Utils::Vector3d sums{};
 
   for (auto const &p : particles) {
     if (p.p.q != 0.0) {
-
       if (include_particles) {
         sums[0] += 1.0;
         sums[1] += Utils::sqr(p.p.q);
