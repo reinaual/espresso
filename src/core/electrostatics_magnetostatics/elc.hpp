@@ -42,8 +42,6 @@ typedef struct {
    *  it does not make much sense.
    */
   double far_cut;
-  /** Squared value of #far_cut. */
-  double far_cut2;
   /** Size of the empty gap. Note that ELC relies on the user to make sure
    *  that this condition is fulfilled.
    */

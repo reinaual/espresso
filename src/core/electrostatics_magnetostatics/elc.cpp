@@ -52,8 +52,8 @@
 static double ux, uy, uz, height_inverse;
 /*@}*/
 
-ELC_struct elc_params = {1e100, 10, 1,     0, true, true, false, 1,
-                         1,     1,  false, 0, 0,    0,    0,     0.0};
+ELC_struct elc_params = {1e100, 10,    0, true, true, false, 1,  1,
+                         1,     false, 0, 0,    0,    0,     0.0};
 
 /****************************************
  * LOCAL ARRAYS
@@ -128,8 +128,8 @@ void ELC_setup_constants() {
  * @return Calculated values.
  */
 template <size_t dir>
-static std::vector<SCCache> sc_cache(const ParticleRange &particles,
-                                     const int n_freq, const double u) {
+static std::vector<SCCache> sc_cache(const ParticleRange &particles, int n_freq,
+                                     double u) {
   auto const n_part = particles.size();
   std::vector<SCCache> ret((n_freq + 1) * n_part);
 
@@ -491,7 +491,7 @@ inline Utils::VectorXd<8> apply_factors(Utils::VectorXd<8> vector,
 /**
  * @brief Calculate the Lprime summation prefactors for the image_sum (X-sum)
  *
- * @param z z position
+ * @param z z-position
  * @param omega 2 * pi * f_pq
  * @return Calculated prefactor
  */
@@ -886,12 +886,11 @@ void ELC_init() {
     const double space_box = elc_params.gap_size - 2 * elc_params.space_layer;
     // reset minimal_dist for tuning
     elc_params.minimal_dist = std::min(space_box, elc_params.space_layer);
-  }
 
-  if (elc_params.far_calculated && elc_params.dielectric_contrast_on) {
-    ELC_tune(elc_params.maxPWerror);
-  }
-  if (elc_params.dielectric_contrast_on) {
+    if (elc_params.far_calculated) {
+      ELC_tune(elc_params.maxPWerror);
+    }
+
     p3m.params.additional_mesh[0] = 0;
     p3m.params.additional_mesh[1] = 0;
     p3m.params.additional_mesh[2] = elc_params.space_layer;

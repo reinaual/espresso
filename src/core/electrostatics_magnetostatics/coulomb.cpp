@@ -262,7 +262,7 @@ void calc_long_range_force(const ParticleRange &particles) {
   case COULOMB_ELC_P3M:
     if (elc_params.dielectric_contrast_on) {
       // assign real and image charges to P3M
-      ELC_P3M_modify_p3m_sums<true, true>(particles);
+      ELC_P3M_modify_p3m_sums_both(particles);
       ELC_p3m_charge_assign_both(particles);
       ELC_P3M_self_forces(particles);
     } else {
@@ -273,7 +273,7 @@ void calc_long_range_force(const ParticleRange &particles) {
 
     if (elc_params.dielectric_contrast_on) {
       // restore P3M sums
-      ELC_P3M_modify_p3m_sums<true, false>(particles);
+      ELC_P3M_restore_p3m_sums(particles);
     }
 
     ELC_add_force(particles);
@@ -334,10 +334,8 @@ void calc_energy_long_range(Observable_stat &energy,
   case COULOMB_ELC_P3M:
     // assign the original charges first they may not have been assigned yet
     p3m_charge_assign(particles);
-    if (!elc_params.dielectric_contrast_on) {
-      energy.coulomb[1] = p3m_calc_kspace_forces(false, true, particles);
-    } else {
-      energy.coulomb[1] = p3m_calc_kspace_forces(false, true, particles);
+    energy.coulomb[1] = p3m_calc_kspace_forces(false, true, particles);
+    if (elc_params.dielectric_contrast_on) {
       energy.coulomb[1] += ELC_P3M_dielectric_layers_energy_self(particles);
 
       //  assign both original and image charges now
