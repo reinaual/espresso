@@ -30,6 +30,7 @@
 #include "electrostatics_magnetostatics/p3m.hpp"
 #include "electrostatics_magnetostatics/reaction_field.hpp"
 #include "electrostatics_magnetostatics/scafacos.hpp"
+#include "electrostatics_magnetostatics/test2d.hpp"
 
 #include <utils/Vector.hpp>
 #include <utils/math/tensor_product.hpp>
@@ -42,6 +43,7 @@ inline Utils::Vector3d central_force(double const q1q2,
 
   switch (coulomb.method) {
 #ifdef P3M
+  case COULOMB_TEST2D_P3M:
   case COULOMB_P3M_GPU:
   case COULOMB_P3M:
   case COULOMB_ELC_P3M:
@@ -90,6 +92,15 @@ pair_force(Particle const &p1, Particle const &p2, Utils::Vector3d const &d,
     auto const f2 =
         coulomb.prefactor *
         ELC_P3M_dielectric_layers_force_contribution(p1.r.p, p2.r.p, q1q2);
+
+    return {force, f1, f2};
+  }
+
+  if (coulomb.method == COULOMB_TEST2D_P3M) {
+    auto const f1 = coulomb.prefactor * TEST2D_image_charge_force_contribution(
+                                            p2.r.p, p1.r.p, q1q2);
+    auto const f2 = coulomb.prefactor * TEST2D_image_charge_force_contribution(
+                                            p1.r.p, p2.r.p, q1q2);
 
     return {force, f1, f2};
   }
@@ -155,6 +166,8 @@ inline double pair_energy(Particle const &p1, Particle const &p2,
       } else {
         return p3m_pair_energy(q1q2, dist);
       }
+    case COULOMB_TEST2D_P3M:
+      return 0.5 * TEST2D_image_charge_energy(p1, p2) + p3m_pair_energy(q1q2, dist);
 #endif
 #ifdef SCAFACOS
     case COULOMB_SCAFACOS:

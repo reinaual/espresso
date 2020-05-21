@@ -62,3 +62,13 @@ IF ELECTROSTATICS and P3M:
 
         void iccp3m_alloc_lists()
         int mpi_iccp3m_init()
+
+    cdef extern from "electrostatics_magnetostatics/test2d.hpp":
+        ctypedef struct TEST2DParameters:
+            double potential_difference
+
+        # links intern C-struct with python object
+        TEST2DParameters test2d_params
+
+        void TEST2D_set_params(double potential_difference)
+        void TEST2D_disable()

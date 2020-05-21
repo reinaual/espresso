@@ -36,6 +36,7 @@
 #include "electrostatics_magnetostatics/p3m_gpu.hpp"
 #include "electrostatics_magnetostatics/reaction_field.hpp"
 #include "electrostatics_magnetostatics/scafacos.hpp"
+#include "electrostatics_magnetostatics/test2d.hpp"
 #include "errorhandling.hpp"
 #include "grid_based_algorithms/electrokinetics.hpp"
 #include "integrate.hpp"
@@ -58,6 +59,10 @@ namespace Coulomb {
 Utils::Vector9d calc_pressure_long_range(const ParticleRange &particles) {
   switch (coulomb.method) {
 #ifdef P3M
+  case COULOMB_TEST2D_P3M:
+    fprintf(stderr,
+            "WARNING: pressure calculated, but TEST2D pressure not implemented\n");
+    break;
   case COULOMB_ELC_P3M:
     fprintf(stderr,
             "WARNING: pressure calculated, but ELC pressure not implemented\n");
@@ -91,6 +96,10 @@ void sanity_checks(int &state) {
       state = 0;
     break;
 #ifdef P3M
+  case COULOMB_TEST2D_P3M:
+    if (TEST2D_sanity_check() and p3m_sanity_checks())
+      state = 0;
+    break;
   case COULOMB_ELC_P3M:
     if (ELC_sanity_checks())
       state = 0; // fall through
@@ -112,6 +121,7 @@ double cutoff(const Utils::Vector3d &box_l) {
 #ifdef P3M
   case COULOMB_ELC_P3M:
     return std::max(elc_params.space_layer, p3m.params.r_cut_iL * box_l[0]);
+  case COULOMB_TEST2D_P3M:
   case COULOMB_P3M_GPU:
   case COULOMB_P3M:
     /* do not use precalculated r_cut here, might not be set yet */
@@ -133,6 +143,7 @@ double cutoff(const Utils::Vector3d &box_l) {
 void deactivate() {
   switch (coulomb.method) {
 #ifdef P3M
+  case COULOMB_TEST2D_P3M:
   case COULOMB_ELC_P3M:
   case COULOMB_P3M_GPU:
   case COULOMB_P3M:
@@ -165,6 +176,7 @@ void update_dependent_particles() {
 void on_observable_calc() {
   switch (coulomb.method) {
 #ifdef P3M
+  case COULOMB_TEST2D_P3M:
   case COULOMB_ELC_P3M:
   case COULOMB_P3M_GPU:
   case COULOMB_P3M:
@@ -187,6 +199,10 @@ void on_coulomb_change() {
       p3m_gpu_init(p3m.params.cao, p3m.params.mesh, p3m.params.alpha);
     break;
 #endif
+  case COULOMB_TEST2D_P3M:
+    TEST2D_init();
+    p3m_init();
+    break;
   case COULOMB_ELC_P3M:
     ELC_init();
     // fall through
@@ -205,6 +221,10 @@ void on_coulomb_change() {
 void on_boxl_change() {
   switch (coulomb.method) {
 #ifdef P3M
+  case COULOMB_TEST2D_P3M:
+    TEST2D_on_boxl_change();
+    p3m_scaleby_box_l();
+    break;
   case COULOMB_ELC_P3M:
     ELC_init();
     // fall through
@@ -231,6 +251,10 @@ void init() {
   case COULOMB_DH:
     break;
 #ifdef P3M
+  case COULOMB_TEST2D_P3M:
+    TEST2D_init();
+    p3m_init();
+    break;
   case COULOMB_ELC_P3M:
     ELC_init();
     // fall through
@@ -251,6 +275,13 @@ void init() {
 void calc_long_range_force(const ParticleRange &particles) {
   switch (coulomb.method) {
 #ifdef P3M
+  case COULOMB_TEST2D_P3M:
+    TEST2D_modify_P3M_sums(particles);
+    TEST2D_charge_assign_P3M(particles);
+    TEST2D_image_charge_force_contribution(particles);
+
+    p3m_calc_kspace_forces(true, false, particles);
+    break;
   case COULOMB_ELC_P3M:
     if (elc_params.dielectric_contrast_on) {
       ELC_P3M_modify_p3m_sums_both(particles);
@@ -347,6 +378,12 @@ double calc_energy_long_range(const ParticleRange &particles) {
     }
     energy += ELC_energy(particles);
     break;
+  case COULOMB_TEST2D_P3M:
+    TEST2D_modify_P3M_sums(particles);
+    TEST2D_charge_assign_P3M(particles);
+    energy = 0.5 * p3m_calc_kspace_forces(false, true, particles);
+    energy += TEST2D_image_charge_energy(particles);
+    break;
 #endif
 #ifdef SCAFACOS
   case COULOMB_SCAFACOS:
@@ -416,6 +453,10 @@ void bcast_coulomb_params() {
   case COULOMB_SCAFACOS:
     break;
 #ifdef P3M
+  case COULOMB_TEST2D_P3M:
+    MPI_Bcast(&test2d_params, sizeof(TEST2DParameters), MPI_BYTE, 0, comm_cart);
+    MPI_Bcast(&p3m.params, sizeof(P3MParameters), MPI_BYTE, 0, comm_cart);
+    break;
   case COULOMB_ELC_P3M:
     MPI_Bcast(&elc_params, sizeof(ELC_struct), MPI_BYTE, 0, comm_cart);
     // fall through

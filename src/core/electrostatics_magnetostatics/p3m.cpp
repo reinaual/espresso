@@ -236,7 +236,7 @@ void p3m_set_tune_params(double r_cut, const int mesh[3], int cao, double alpha,
 int p3m_set_params(double r_cut, const int *mesh, int cao, double alpha,
                    double accuracy) {
   if (coulomb.method != COULOMB_P3M && coulomb.method != COULOMB_ELC_P3M &&
-      coulomb.method != COULOMB_P3M_GPU)
+      coulomb.method != COULOMB_P3M_GPU && coulomb.method != COULOMB_TEST2D_P3M)
     coulomb.method = COULOMB_P3M;
 
   if (r_cut < 0)
@@ -558,22 +558,19 @@ double p3m_calc_kspace_forces(bool force_flag, bool energy_flag,
     }
     node_k_space_energy *= coulomb.prefactor / (2 * box_geo.volume());
 
-    double k_space_energy = 0.0;
-    boost::mpi::reduce(comm_cart, node_k_space_energy, k_space_energy,
-                       std::plus<>(), 0);
     if (this_node == 0) {
       /* self energy correction */
-      k_space_energy -= coulomb.prefactor *
+      node_k_space_energy -= coulomb.prefactor *
                         (p3m.sum_q2 * p3m.params.alpha * Utils::sqrt_pi_i());
       /* net charge correction */
-      k_space_energy -= coulomb.prefactor * p3m.square_sum_q * Utils::pi() /
+      node_k_space_energy -= coulomb.prefactor * p3m.square_sum_q * Utils::pi() /
                         (2.0 * box_geo.volume() * Utils::sqr(p3m.params.alpha));
       /* dipole correction */
       if (p3m.params.epsilon != P3M_EPSILON_METALLIC) {
-        k_space_energy += dipole_correction_energy(box_dipole.value());
+        node_k_space_energy += dipole_correction_energy(box_dipole.value());
       }
     }
-    return k_space_energy;
+    return node_k_space_energy;
   } /* if (energy_flag) */
 
   return 0.0;
@@ -665,7 +662,7 @@ static double p3m_mcr_time(const int mesh[3], int cao, double r_cut_iL,
 
   /* broadcast p3m parameters for test run */
   if (coulomb.method != COULOMB_P3M && coulomb.method != COULOMB_ELC_P3M &&
-      coulomb.method != COULOMB_P3M_GPU)
+      coulomb.method != COULOMB_P3M_GPU && coulomb.method != COULOMB_TEST2D_P3M)
     coulomb.method = COULOMB_P3M;
 
   p3m.params.r_cut = r_cut_iL * box_geo.length()[0];

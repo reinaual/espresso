@@ -349,3 +349,40 @@ IF ELECTROSTATICS and P3M:
 
             """
             return iccp3m_cfg.citeration
+
+
+    cdef class TEST2D(ElectrostaticExtensions):
+        """
+        Electrostatics extension for systems with two periodic dimensions and metallic walls with a fixed potential difference.
+
+        Parameters
+        ----------
+        potential_difference : :obj:`float`, optional
+            Potential difference between the metallic walls
+        """
+
+        def valid_keys(self):
+            return ["potential_difference"]
+
+        def default_params(self):
+            return {"potential_difference": 0}
+
+        def required_keys(self):
+            return []
+
+        def validate_params(self):
+            check_type_or_throw_except(self._params["potential_difference"], 1, float, "")
+
+        def _activate_method(self):
+            self._set_params_in_es_core()
+
+        def _deactivate_method(self):
+            TEST2D_disable()
+
+        def _set_params_in_es_core(self):
+            TEST2D_set_params(self._params["potential_difference"])
+
+        def _get_params_from_es_core(self):
+            params = {}
+            params.update(test2d_params)
+            return params
