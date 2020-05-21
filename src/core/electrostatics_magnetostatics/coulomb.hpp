@@ -41,6 +41,7 @@ enum CoulombMethod {
   COULOMB_RF,        ///< %Coulomb method is Reaction-Field
   COULOMB_MMM1D_GPU, ///< %Coulomb method is one-dimensional MMM running on GPU
   COULOMB_SCAFACOS,  ///< %Coulomb method is ScaFaCoS
+  COULOMB_TEST2D_P3M,///< %Coulomb method is TEST2D plus P3M
 };
 
 /** Interaction parameters for the %Coulomb interaction. */

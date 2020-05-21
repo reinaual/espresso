@@ -349,3 +349,24 @@ IF ELECTROSTATICS and P3M:
 
             """
             return iccp3m_cfg.citeration
+
+
+    cdef class TEST2D(ElectrostaticExtensions):
+        """
+        Electrostatics extension for systems with two periodic dimensions and metallic walls with zero potential difference.
+        """
+
+        def default_params(self):
+            return {}
+
+        def required_keys(self):
+            return []
+
+        def validate_params(self):
+            pass
+
+        def _activate_method(self):
+            TEST2D_init()
+
+        def _deactivate_method(self):
+            TEST2D_disable()

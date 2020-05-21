@@ -62,5 +62,9 @@ IF ELECTROSTATICS and P3M:
 
         void iccp3m_alloc_lists()
 
+    cdef extern from "electrostatics_magnetostatics/test2d.hpp":
+        void TEST2D_init()
+        void TEST2D_disable()
+
     cdef extern from "communication.hpp":
         int mpi_iccp3m_init()

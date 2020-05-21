@@ -17,4 +17,5 @@ target_sources(
           ${CMAKE_CURRENT_SOURCE_DIR}/coulomb.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/dipole.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/reaction_field.cpp
-          ${CMAKE_CURRENT_SOURCE_DIR}/specfunc.cpp)
+          ${CMAKE_CURRENT_SOURCE_DIR}/specfunc.cpp
+          ${CMAKE_CURRENT_SOURCE_DIR}/test2d.cpp)
