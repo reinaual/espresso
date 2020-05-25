@@ -38,16 +38,14 @@ __device__ inline void get_mi_vector_dds(dds_float res[3], dds_float const a[3],
                                          dds_float const b[3],
                                          dds_float const box_l[3],
                                          int const periodic[3]) {
-  int i;
-
-  for (i = 0; i < 3; i++) {
+  for (int i = 0; i < 3; i++) {
     res[i] = a[i] - b[i];
     if (periodic[i])
       res[i] -= floor(res[i] / box_l[i] + 0.5) * box_l[i];
   }
 }
 
-#define scalar(a, b) (a[0] * b[0] + a[1] * b[1] + a[2] * b[2])
+#define scalar(a, b) ((a)[0] * (b)[0] + (a)[1] * (b)[1] + (a)[2] * (b)[2])
 
 __device__ void dipole_ia_force(int id, dds_float pf, float const *r1,
                                 float const *r2, float const *dip1,
@@ -63,7 +61,7 @@ __device__ void dipole_ia_force(int id, dds_float pf, float const *r1,
   dds_float dr[3];
   dds_float _r1[3], _r2[3], _dip1[3], _dip2[3];
 
-  for (int i = i = 0; i < 3; i++) {
+  for (int i = 0; i < 3; i++) {
     _r1[i] = r1[i];
     _r2[i] = r2[i];
     _dip1[i] = dip1[i];

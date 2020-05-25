@@ -66,7 +66,7 @@ typedef struct {
   /// dielectric contrast in the lower part of the simulation cell.
   double delta_mid_bot;
   /// product of the two dielectric contrasts.
-  double delta;
+  double delta, inv_delta;
   /// @brief Flag whether a const. potential is applied.
   bool const_pot;
   /// @brief Const. potential.
@@ -82,8 +82,7 @@ typedef struct {
   /** length for top image charges to be calculated */
   double top_space_layer;
   /** Up to where particles can be found. */
-  double h;
-
+  double h, two_h;
 } ELC_struct;
 extern ELC_struct elc_params;
 
@@ -127,10 +126,8 @@ void ELC_init();
 double ELC_P3M_dielectric_layers_energy_contribution(Particle const &p1,
                                                      Particle const &p2);
 /// pairwise contributions from the lowest and top layers to the force
-void ELC_P3M_dielectric_layers_force_contribution(Particle const &p1,
-                                                  Particle const &p2,
-                                                  Utils::Vector3d &force1,
-                                                  Utils::Vector3d &force2);
+Utils::Vector3d ELC_P3M_dielectric_layers_force_contribution(
+    const Utils::Vector3d &pos1, const Utils::Vector3d &pos2, double q1q2);
 /// self energies of top and bottom layers with their virtual images
 double ELC_P3M_dielectric_layers_energy_self(const ParticleRange &particles);
 /// forces of particles in border layers with themselves

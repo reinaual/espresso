@@ -26,7 +26,7 @@
 #include "errorhandling.hpp"
 #include "grid.hpp"
 #include "mmm-common.hpp"
-#include "pressure.hpp"
+
 #include <cmath>
 #include <mpi.h>
 
@@ -52,8 +52,8 @@
 static double ux, uy, uz, height_inverse;
 /*@}*/
 
-ELC_struct elc_params = {1e100, 10,    0, true, true, false, 1,  1,
-                         1,     false, 0, 0,    0,    0,     0.0};
+ELC_struct elc_params = {1e100, 10,    0, true, true, false, 1,   1,  1,
+                         1,     false, 0, 0,    0,    0,     0.0, 0.0};
 
 /****************************************
  * LOCAL ARRAYS
@@ -64,14 +64,10 @@ ELC_struct elc_params = {1e100, 10,    0, true, true, false, 1,  1,
  *  lower half.
  */
 /*@{*/
-#define PQESSP 0
-#define PQESCP 1
-#define PQECSP 2
-#define PQECCP 3
-#define PQESSM 4
-#define PQESCM 5
-#define PQECSM 6
-#define PQECCM 7
+#define PQESS 0
+#define PQESC 1
+#define PQECS 2
+#define PQECC 3
 /*@}*/
 
 /** temporary buffers for product decomposition (chi-sum) */
@@ -100,7 +96,8 @@ static Utils::VectorXd<8> setup_PQ(int p, int q, double omega,
 static void add_PQ_force(const ParticleRange &particles,
                          Utils::VectorXd<8> &part_sum);
 static double PQ_energy(double fpq, int n_particles,
-                        Utils::VectorXd<8> &part_sum);
+                        const Utils::Vector4d &summation_lower_sum,
+                        const Utils::Vector4d &summation_upper_sum);
 /*@}*/
 template <bool dielectric>
 static void add_dipole_force(const ParticleRange &particles);
@@ -120,7 +117,7 @@ void ELC_setup_constants() {
 /**
  * @brief Calculated cached sin/cos values for one direction.
  *
- * @tparam Index of the dimension to consider (e.g. 0 for x ...).
+ * @tparam dir Index of the dimension to consider (e.g. 0 for x ...).
  *
  * @param particles Particles to calculate values for
  * @param n_freq Number of frequencies to calculate per particle
@@ -186,7 +183,7 @@ static void add_dipole_force(const ParticleRange &particles) {
       }
       if (zpos > elc_params.top_space_layer) {
         moments[1] +=
-            elc_params.delta_mid_top * q * (2 * elc_params.h - zpos - shift);
+            elc_params.delta_mid_top * q * (elc_params.two_h - zpos - shift);
       }
     }
   }
@@ -260,9 +257,9 @@ static double dipole_energy(const ParticleRange &particles) {
       } else if (zpos > elc_params.top_space_layer) {
         moments[1] += elc_params.delta_mid_top * q;
         moments[3] +=
-            elc_params.delta_mid_top * q * (2 * elc_params.h - zpos - shift);
+            elc_params.delta_mid_top * q * (elc_params.two_h - zpos - shift);
         moments[5] += elc_params.delta_mid_top * q *
-                      (Utils::sqr(2 * elc_params.h - zpos - shift));
+                      (Utils::sqr(elc_params.two_h - zpos - shift));
       }
     }
   }
@@ -283,12 +280,15 @@ static double dipole_energy(const ParticleRange &particles) {
 
     // L_+-1 system
     eng -= sum_energy_correction(moments[1], moments[3], moments[5]);
+
+    // scale correction the same way as in long range energy
     eng *= 0.5;
   }
 
   eng *= pref;
 
   if (dielectric and elc_params.const_pot) {
+    // TODO why do we need an extra correction following Lz * M_z ?!
     // zero potential difference contribution
     // eng += height_inverse * box_geo.length()[2] * Utils::sqr(moments[2]);
     // external potential shift contribution
@@ -301,10 +301,8 @@ static double dipole_energy(const ParticleRange &particles) {
 
 /*****************************************************************/
 
-inline double image_sum(const double z) {
-  const double invdelta = 1. / (1 - elc_params.delta);
-
-  return invdelta * (z + 2 * elc_params.h * elc_params.delta * invdelta);
+inline double image_sum(double z, double inv_delta) {
+  return inv_delta * (z + elc_params.two_h * elc_params.delta * inv_delta);
 }
 
 /**
@@ -335,15 +333,15 @@ static double z_energy(const ParticleRange &particles) {
       } else if (zpos > elc_params.top_space_layer) {
         zeta[2] += elc_params.delta_mid_top * p.p.q;
         zeta[3] += elc_params.delta_mid_top * p.p.q *
-                   (2 * elc_params.h - zpos - shift);
+                   (elc_params.two_h - zpos - shift);
       }
     }
   } else {
-    const double invfac = 1. / (1 - elc_params.delta);
-    const double fac_delta_mid_bot = elc_params.delta_mid_bot * invfac;
-    const double fac_delta_mid_top = elc_params.delta_mid_top * invfac;
-    const double fac_delta = elc_params.delta * invfac;
-    const double two_h = 2. * elc_params.h;
+    const double inv_delta = elc_params.inv_delta;
+    const double fac_delta_mid_bot = elc_params.delta_mid_bot * inv_delta;
+    const double fac_delta_mid_top = elc_params.delta_mid_top * inv_delta;
+    const double fac_delta = elc_params.delta * inv_delta;
+    const double two_h = elc_params.two_h;
 
     for (auto &p : particles) {
       const double zpos = p.r.p[2];
@@ -354,27 +352,30 @@ static double z_energy(const ParticleRange &particles) {
       if (zpos < elc_params.space_layer) {
         // this is L_0-1
         zeta[2] += fac_delta * (elc_params.delta_mid_bot + 1) * p.p.q;
-        zeta[3] += p.p.q * fac_delta *
-                   (-elc_params.delta_mid_bot * image_sum(two_h + zpos) -
-                    image_sum(two_h - zpos));
+        zeta[3] +=
+            p.p.q * fac_delta *
+            (-elc_params.delta_mid_bot * image_sum(two_h + zpos, inv_delta) -
+             image_sum(two_h - zpos, inv_delta));
       } else {
         // this is L_00 and L_0+1
         zeta[2] += fac_delta_mid_bot * (1 + elc_params.delta_mid_top) * p.p.q;
-        zeta[3] += p.p.q * (-fac_delta_mid_bot * image_sum(zpos) -
-                            fac_delta * image_sum(two_h - zpos));
+        zeta[3] += p.p.q * (-fac_delta_mid_bot * image_sum(zpos, inv_delta) -
+                            fac_delta * image_sum(two_h - zpos, inv_delta));
       }
       // calculation of zeta_Lp2
       if (zpos > elc_params.top_space_layer) {
         // this is L_0+1
         zeta[2] -= fac_delta * (elc_params.delta_mid_top + 1) * p.p.q;
-        zeta[3] -= p.p.q * fac_delta *
-                   (elc_params.delta_mid_top * image_sum(2 * two_h - zpos) +
-                    image_sum(two_h + zpos));
+        zeta[3] -=
+            p.p.q * fac_delta *
+            (elc_params.delta_mid_top * image_sum(2 * two_h - zpos, inv_delta) +
+             image_sum(two_h + zpos, inv_delta));
       } else {
         // this is L_0-1 and L_00
         zeta[2] -= fac_delta_mid_top * (1 + elc_params.delta_mid_bot) * p.p.q;
-        zeta[3] -= p.p.q * (fac_delta_mid_top * image_sum(two_h - zpos) +
-                            fac_delta * image_sum(two_h + zpos));
+        zeta[3] -=
+            p.p.q * (fac_delta_mid_top * image_sum(two_h - zpos, inv_delta) +
+                     fac_delta * image_sum(two_h + zpos, inv_delta));
       }
     }
   }
@@ -452,20 +453,10 @@ static void add_z_force(const ParticleRange &particles) {
  * @param index_y y-direction index for caches cos/sin values
  * @return Calculated fourier factors
  */
-inline Utils::VectorXd<8> fourier_factors(const size_t index_x,
-                                          const size_t index_y) {
-  Utils::VectorXd<8> temp_sum;
+inline Utils::Vector4d fourier_factors(size_t index_x, size_t index_y) {
   const auto x_cache = scxcache[index_x], y_cache = scycache[index_y];
-  temp_sum[PQESSP] = x_cache.s * y_cache.s;
-  temp_sum[PQESCP] = x_cache.s * y_cache.c;
-  temp_sum[PQECSP] = x_cache.c * y_cache.s;
-  temp_sum[PQECCP] = x_cache.c * y_cache.c;
-  temp_sum[PQESSM] = temp_sum[PQESSP];
-  temp_sum[PQESCM] = temp_sum[PQESCP];
-  temp_sum[PQECSM] = temp_sum[PQECSP];
-  temp_sum[PQECCM] = temp_sum[PQECCP];
-
-  return temp_sum;
+  return {x_cache.s * y_cache.s, x_cache.s * y_cache.c, x_cache.c * y_cache.s,
+          x_cache.c * y_cache.c};
 }
 
 /**
@@ -477,8 +468,7 @@ inline Utils::VectorXd<8> fourier_factors(const size_t index_x,
  * @return new vector with applied factors
  */
 inline Utils::VectorXd<8> apply_factors(Utils::VectorXd<8> vector,
-                                        const double factor_p,
-                                        const double factor_n) {
+                                        double factor_p, double factor_n) {
   /* this function is returning a copy of the vector with the first half scaled
    * by the first factor and the second half with the second factor */
   for (unsigned int i = 0; i < 4; ++i) {
@@ -489,16 +479,17 @@ inline Utils::VectorXd<8> apply_factors(Utils::VectorXd<8> vector,
 }
 
 /**
- * @brief Calculate the Lprime summation prefactors for the image_sum (X-sum)
+ * @brief Calculate the denominator of the Lprime summation prefactors for the
+ * image_sum (X-sum) because the numerator is already included
  *
  * @param z z-position
  * @param omega 2 * pi * f_pq
  * @return Calculated prefactor
  */
-inline double sum_prefactor_prime(const double z, const double omega) {
+inline double sum_prefactor_prime(double z, double omega) {
   /* the divisor has the opposite sign compared to the paper but matches the
      previous implementation */
-  return -exp(-omega * z) / expm1(2 * omega * box_geo.length()[2]);
+  return -1 / expm1(2 * omega * box_geo.length()[2]);
 }
 
 /**
@@ -537,7 +528,7 @@ static Utils::VectorXd<8> setup_PQ(const int p, const int q, const double omega,
   auto const oy = static_cast<size_t>(q * particles.size());
 
   // this is only necessary if dielectric contrast is on...
-  auto const two_h = 2 * elc_params.h;
+  auto const two_h = elc_params.two_h;
 
   for (auto const &p : particles) {
     const size_t index_x = ox + ic;
@@ -615,25 +606,114 @@ static Utils::VectorXd<8> setup_PQ(const int p, const int q, const double omega,
     ic++;
   }
 
+  if (dielectric) {
+    part_sum *= 0.5;
+  }
+
   return boost::mpi::all_reduce(comm_cart, part_sum, std::plus<>());
 }
 
+/**
+ * @brief Calulate pq summation parts. For the dielectric case this preparation
+ * includes the interaction of L_0 with L_+-1 and L_+-2.
+ *
+ * @param p first fourier index
+ * @param q second fourier index
+ * @param omega 2 * pi * f_pq
+ * @param particles Particle to calculate sum for
+ *
+ * @return Calculated sums.
+ */
+template <bool dielectric>
+static std::tuple<Utils::Vector4d, Utils::Vector4d>
+setup_PQ_nondielectric(int p, int q, double omega,
+                       const ParticleRange &particles) {
+  Utils::Vector4d center_sum_positive{}, center_sum_negative{},
+      upper_sum_negative{}, lower_sum_positive{};
+
+  size_t ic = 0;
+  auto const ox = static_cast<size_t>(p * particles.size());
+  auto const oy = static_cast<size_t>(q * particles.size());
+
+  auto const two_h = elc_params.two_h;
+
+  for (auto const &p : particles) {
+    const size_t index_x = ox + ic;
+    const size_t index_y = oy + ic;
+
+    const double zpos = p.r.p[2];
+
+    // setup vector with fourier factors
+    Utils::Vector4d ffactors = p.p.q * fourier_factors(index_x, index_y);
+
+    const auto exp_factor = exp(-omega * zpos);
+    const auto exp_ffactors = exp_factor * ffactors;
+    const auto inv_exp_ffactors = 1 / exp_factor * ffactors;
+
+    center_sum_positive += exp_ffactors;
+    center_sum_negative += inv_exp_ffactors;
+
+    const double image_sum_denominator =
+        -1 / expm1(2 * omega * box_geo.length()[2]);
+
+    if (zpos >= elc_params.space_layer) {
+      upper_sum_negative += exp(-omega * box_geo.length()[2]) *
+                            image_sum_denominator * inv_exp_ffactors;
+    } else {
+      lower_sum_positive += image_sum_denominator * exp_ffactors;
+    }
+
+    if (dielectric) {
+      // add interaction of L_+-1 and L_+-2
+    }
+
+    for (int i = 0; i < 4; ++i) {
+      part_fac[ic + i] = lower_sum_positive[i];
+      part_fac[ic + i + 4] = upper_sum_negative[i];
+    }
+
+    ic++;
+  }
+
+  center_sum_negative =
+      boost::mpi::all_reduce(comm_cart, center_sum_negative, std::plus<>());
+  center_sum_negative =
+      boost::mpi::all_reduce(comm_cart, center_sum_positive, std::plus<>());
+
+  return std::make_tuple(center_sum_positive, center_sum_negative);
+}
+
+/**
+ * @brief Adding the pq-summation forces to the particles
+ * @param particles particle range
+ * @param summation_lower_sum spatially lower part of the summation (standard
+ * ELC: center_sum_negative)
+ * @param summation_upper_sum spatially upper part of the summation (standard
+ * ELC: center_sum_positive)
+ */
 static void add_PQ_force(const ParticleRange &particles,
-                         const Utils::VectorXd<8> &part_sum) {
+                         const Utils::Vector4d &summation_lower_sum,
+                         const Utils::Vector4d &summation_upper_sum) {
   const double pref_z = 2 * Utils::pi() * ux * uy * coulomb.prefactor;
 
   size_t ic = 0;
   for (auto &p : particles) {
     const size_t offset = 8 * ic;
 
-    p.f.f[2] += pref_z * (part_fac[offset + PQECCM] * part_sum[PQECCP] +
-                          part_fac[offset + PQESCM] * part_sum[PQESCP] +
-                          part_fac[offset + PQECSM] * part_sum[PQECSP] +
-                          part_fac[offset + PQESSM] * part_sum[PQESSP] -
-                          part_fac[offset + PQECCP] * part_sum[PQECCM] -
-                          part_fac[offset + PQESCP] * part_sum[PQESCM] -
-                          part_fac[offset + PQECSP] * part_sum[PQECSM] -
-                          part_fac[offset + PQESSP] * part_sum[PQESSM]);
+    // TODO ask if this conversation can be optimized by the compiler to skip
+    // copying
+
+    // lower_factor_positive contains the spatially lower part of the negative
+    // summand
+    // upper_factor_negative contains the spatially upper part of the
+    // positive summand
+    const Utils::Vector4d upper_factor_negative(&part_fac[offset],
+                                                &part_fac[offset + 4]),
+        lower_factor_positive(&part_fac[offset + 4], &part_fac[offset + 8]);
+
+    p.f.f[2] += pref_z * (upper_factor_negative * summation_lower_sum -
+                          lower_factor_positive * summation_upper_sum);
+
     ic++;
   }
 }
@@ -641,37 +721,33 @@ static void add_PQ_force(const ParticleRange &particles,
 /**
  * @brief Calculate the factors for the pq-summation according to equation
  * (3.10)
- * @param fpq factor f_pq
+ * @param fpqfactor f_pq
  * @param n_particles number of particles to iterate over
- * @param part_sum summation values
- * @return Calculated energy contribution.
+ * @param summation_lower_sum spatially lower part of the summation (standard
+ * ELC: center_sum_negative)
+ * @param summation_upper_sum spatially upper part of the summation (standard
+ * ELC: center_sum_positive)
+ * @return Calculated energy contribution
  */
-static double PQ_energy(const double fpq, const size_t n_particles,
-                        const Utils::VectorXd<8> &part_sum) {
-  double eng = 0;
+static double PQ_energy(double fpq, int n_particles,
+                        const Utils::Vector4d &summation_lower_sum,
+                        const Utils::Vector4d &summation_upper_sum) {
+  // lower_sum_positive contains the spatially lower part of the first sum
+  // upper_sum_negative contains the spatially upper part of the second sum
+  Utils::Vector4d upper_sum_negative{}, lower_sum_positive{};
 
-  // calculate the image sums
-  Utils::VectorXd<8> image_sum{};
   for (size_t i = 0; i < n_particles; ++i) {
     const size_t offset = i * 8;
-    for (int j = 0; j < 8; j++) {
-      image_sum[j] = part_fac[offset + j];
+    for (int j = 0; j < 4; j++) {
+      lower_sum_positive[j] += part_fac[offset + j];
+      upper_sum_negative[j] += part_fac[offset + j + 4];
     }
   }
 
-  // first sum in (3.10)
-  eng += part_sum[PQECCM] * image_sum[PQECCP] +
-         part_sum[PQESCM] * image_sum[PQESCP] +
-         part_sum[PQECSM] * image_sum[PQECSP] +
-         part_sum[PQESSM] * image_sum[PQESSP];
-
-  // second sum in (3.10)
-  eng += image_sum[PQECCM] * part_sum[PQECCP] +
-         image_sum[PQESCM] * part_sum[PQESCP] +
-         image_sum[PQECSM] * part_sum[PQECSP] +
-         image_sum[PQESSM] * part_sum[PQESSP];
-
-  return eng / fpq;
+  // first sum in (3.10) and second sum in (3.10)
+  const auto energy = summation_upper_sum * lower_sum_positive +
+                      summation_lower_sum * upper_sum_negative;
+  return energy / fpq;
 }
 
 /*****************************************************************/
@@ -684,6 +760,8 @@ static double PQ_energy(const double fpq, const size_t n_particles,
  * @param particles Particles to calculate sums and correct forces for
  */
 void ELC_add_force(const ParticleRange &particles) {
+  return;
+  /*
   std::function<Utils::VectorXd<8>(const size_t, const size_t, const double,
                                    const ParticleRange)>
       local_setup_PQ;
@@ -723,6 +801,7 @@ void ELC_add_force(const ParticleRange &particles) {
       add_PQ_force(particles, part_sum);
     }
   }
+   */
 }
 
 /**
@@ -733,16 +812,17 @@ void ELC_add_force(const ParticleRange &particles) {
  */
 double ELC_energy(const ParticleRange &particles) {
   double eng;
-  std::function<Utils::VectorXd<8>(size_t, size_t, double, const ParticleRange)>
+  std::function<std::tuple<Utils::Vector4d, Utils::Vector4d>(
+      size_t, size_t, double, const ParticleRange)>
       local_setup_PQ;
 
   if (elc_params.dielectric_contrast_on) {
     eng = dipole_energy<true>(particles);
     eng += z_energy(particles);
-    local_setup_PQ = setup_PQ<true>;
+    local_setup_PQ = setup_PQ_nondielectric<true>;
   } else {
     eng = dipole_energy<false>(particles);
-    local_setup_PQ = setup_PQ<false>;
+    local_setup_PQ = setup_PQ_nondielectric<false>;
   }
 
   auto const n_scxcache =
@@ -766,10 +846,11 @@ double ELC_energy(const ParticleRange &particles) {
       }
 
       const double fpq = sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
-      const auto part_sum =
+      const auto center_sum =
           local_setup_PQ(p, q, 2 * Utils::pi() * fpq, particles);
 
-      pq_energy += PQ_energy(fpq, n_particles, part_sum);
+      pq_energy += PQ_energy(fpq, n_particles, std::get<0>(center_sum),
+                             std::get<1>(center_sum));
     }
   }
   eng -= 0.5 * ux * uy * pq_energy;
@@ -880,7 +961,7 @@ void ELC_init() {
                            "dielectric contrast";
     }
     elc_params.space_layer =
-        std::max((1. / 3.) * elc_params.gap_size, max_space_layer);
+        std::min((1. / 3.) * elc_params.gap_size, max_space_layer);
     elc_params.top_space_layer = elc_params.h - elc_params.space_layer;
 
     const double space_box = elc_params.gap_size - 2 * elc_params.space_layer;
@@ -907,6 +988,7 @@ int ELC_set_params(double maxPWerror, double gap_size, double far_cut,
   elc_params.maxPWerror = maxPWerror;
   elc_params.gap_size = gap_size;
   elc_params.h = box_geo.length()[2] - gap_size;
+  elc_params.two_h = 2 * elc_params.h;
 
   if (delta_top != 0.0 || delta_bot != 0.0) {
     elc_params.dielectric_contrast_on = true;
@@ -914,11 +996,15 @@ int ELC_set_params(double maxPWerror, double gap_size, double far_cut,
     elc_params.delta_mid_top = delta_top;
     elc_params.delta_mid_bot = delta_bot;
     elc_params.delta = delta_bot * delta_top;
+    elc_params.inv_delta = 1. / (1. - elc_params.delta);
 
     // neutralize is automatic with dielectric contrast
     elc_params.neutralize = false;
-    // initial setup of parameters, may change later when P3M is finally tuned
-    // set the space_layer to be 1/3 of the gap size, so that box = layer
+    // TODO how can the space_layer height ever change?! it has to be 1/3 of the
+    // simulation box to prevent charges L_+-1 to interact with the short range
+
+    // sum initial setup of parameters, may change later when P3M is finally
+    // tuned set the space_layer to be 1/3 of the gap size, so that box = layer
     elc_params.space_layer = (1. / 3.) * gap_size;
     // reset minimal_dist for tuning
     elc_params.minimal_dist = elc_params.space_layer;
@@ -936,6 +1022,7 @@ int ELC_set_params(double maxPWerror, double gap_size, double far_cut,
     elc_params.delta_mid_top = 0;
     elc_params.delta_mid_bot = 0;
     elc_params.delta = 0;
+    elc_params.inv_delta = 1;
     elc_params.neutralize = neutralize;
     elc_params.space_layer = 0;
     elc_params.top_space_layer = 0;
@@ -945,6 +1032,9 @@ int ELC_set_params(double maxPWerror, double gap_size, double far_cut,
   ELC_setup_constants();
 
   Coulomb::elc_sanity_check();
+
+  p3m.params.epsilon = P3M_EPSILON_METALLIC;
+  coulomb.method = COULOMB_ELC_P3M;
 
   elc_params.far_cut = far_cut;
   if (far_cut != -1) {
@@ -961,29 +1051,9 @@ int ELC_set_params(double maxPWerror, double gap_size, double far_cut,
 ////////////////////////////////////////////////////////////////////////////////////
 
 void ELC_P3M_self_forces(const ParticleRange &particles) {
-  Utils::Vector3d pos;
-  double q;
-
   for (auto &p : particles) {
-    if (p.r.p[2] < elc_params.space_layer) {
-      q = elc_params.delta_mid_bot * p.p.q * p.p.q;
-
-      pos[0] = p.r.p[0];
-      pos[1] = p.r.p[1];
-      pos[2] = -p.r.p[2];
-      auto const d = get_mi_vector(p.r.p, pos, box_geo);
-
-      p3m_add_pair_force(q, d, d.norm(), p.f.f);
-    }
-    if (p.r.p[2] > elc_params.top_space_layer) {
-      q = elc_params.delta_mid_top * p.p.q * p.p.q;
-      pos[0] = p.r.p[0];
-      pos[1] = p.r.p[1];
-      pos[2] = 2 * elc_params.h - p.r.p[2];
-      auto const d = get_mi_vector(p.r.p, pos, box_geo);
-
-      p3m_add_pair_force(q, d, d.norm(), p.f.f);
-    }
+    p.f.f += coulomb.prefactor * ELC_P3M_dielectric_layers_force_contribution(
+                                     p.r.p, p.r.p, p.p.q * p.p.q);
   }
 }
 
@@ -999,7 +1069,7 @@ void assign_image_charge(const Particle &p) {
   } else if (p.r.p[2] > elc_params.top_space_layer) {
     auto const q_eff = elc_params.delta_mid_top * p.p.q;
     auto const pos =
-        Utils::Vector3d{p.r.p[0], p.r.p[1], 2 * elc_params.h - p.r.p[2]};
+        Utils::Vector3d{p.r.p[0], p.r.p[1], elc_params.two_h - p.r.p[2]};
 
     p3m_assign_charge(q_eff, pos);
   }
@@ -1035,88 +1105,62 @@ void ELC_p3m_charge_assign_image(const ParticleRange &particles) {
 
 ////////////////////////////////////////////////////////////////////////////////////
 
-void ELC_P3M_dielectric_layers_force_contribution(Particle const &p1,
-                                                  Particle const &p2,
-                                                  Utils::Vector3d &force1,
-                                                  Utils::Vector3d &force2) {
-  Utils::Vector3d pos;
+Utils::Vector3d ELC_P3M_dielectric_layers_force_contribution(
+    const Utils::Vector3d &pos1, const Utils::Vector3d &pos2, double q1q2) {
+  Utils::Vector3d force{};
 
-  if (p1.r.p[2] < elc_params.space_layer) {
-    const double q = elc_params.delta_mid_bot * p1.p.q * p2.p.q;
-    pos[0] = p1.r.p[0];
-    pos[1] = p1.r.p[1];
-    pos[2] = -p1.r.p[2];
-    auto const d = get_mi_vector(p2.r.p, pos, box_geo);
+  if (pos1[2] < elc_params.space_layer) {
+    auto const q = elc_params.delta_mid_bot * q1q2;
+    auto const d = get_mi_vector(pos2, {pos1[0], pos1[1], -pos1[2]}, box_geo);
 
-    p3m_add_pair_force(q, d, d.norm(), force2);
-  } else if (p1.r.p[2] > elc_params.top_space_layer) {
-    const double q = elc_params.delta_mid_top * p1.p.q * p2.p.q;
-    pos[0] = p1.r.p[0];
-    pos[1] = p1.r.p[1];
-    pos[2] = 2 * elc_params.h - p1.r.p[2];
-    auto const d = get_mi_vector(p2.r.p, pos, box_geo);
-
-    p3m_add_pair_force(q, d, d.norm(), force2);
+    p3m_add_pair_force(q, d, d.norm(), force);
   }
 
-  if (p2.r.p[2] < elc_params.space_layer) {
-    const double q = elc_params.delta_mid_bot * p1.p.q * p2.p.q;
-    pos[0] = p2.r.p[0];
-    pos[1] = p2.r.p[1];
-    pos[2] = -p2.r.p[2];
-    auto const d = get_mi_vector(p1.r.p, pos, box_geo);
+  if (pos1[2] > (elc_params.h - elc_params.space_layer)) {
+    auto const q = elc_params.delta_mid_top * q1q2;
+    auto const d = get_mi_vector(
+        pos2, {pos1[0], pos1[1], 2 * elc_params.h - pos1[2]}, box_geo);
 
-    p3m_add_pair_force(q, d, d.norm(), force1);
-  } else if (p2.r.p[2] > elc_params.top_space_layer) {
-    const double q = elc_params.delta_mid_top * p1.p.q * p2.p.q;
-    pos[0] = p2.r.p[0];
-    pos[1] = p2.r.p[1];
-    pos[2] = 2 * elc_params.h - p2.r.p[2];
-    auto const d = get_mi_vector(p1.r.p, pos, box_geo);
-
-    p3m_add_pair_force(q, d, d.norm(), force1);
+    p3m_add_pair_force(q, d, d.norm(), force);
   }
+
+  return force;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
 
+double ELC_P3M_dielectric_layers_energy_contribution(
+    Utils::Vector3d const &pos1, Utils::Vector3d const &pos2, double q1q2) {
+  double eng = {};
+
+  if (pos1[2] < elc_params.space_layer) {
+    auto const q = elc_params.delta_mid_bot * q1q2;
+
+    eng += p3m_pair_energy(
+        q, get_mi_vector(pos2, {pos1[0], pos1[1], -pos1[2]}, box_geo).norm());
+  }
+
+  if (pos1[2] > (elc_params.h - elc_params.space_layer)) {
+    auto const q = elc_params.delta_mid_top * q1q2;
+    eng += p3m_pair_energy(
+        q, get_mi_vector(pos2, {pos1[0], pos1[1], 2 * elc_params.h - pos1[2]},
+                         box_geo)
+               .norm());
+  }
+
+  return eng;
+}
+
 double ELC_P3M_dielectric_layers_energy_contribution(Particle const &p1,
                                                      Particle const &p2) {
-  Utils::Vector3d pos;
-  double q;
   double eng = 0.0;
 
-  if (p1.r.p[2] < elc_params.space_layer) {
-    q = elc_params.delta_mid_bot * p1.p.q * p2.p.q;
-    pos[0] = p1.r.p[0];
-    pos[1] = p1.r.p[1];
-    pos[2] = -p1.r.p[2];
+  auto const pos1 = p1.r.p;
+  auto const pos2 = p2.r.p;
+  auto const q1q2 = p1.p.q * p2.p.q;
 
-    eng += p3m_pair_energy(q, get_mi_vector(p2.r.p, pos, box_geo).norm());
-  } else if (p1.r.p[2] > elc_params.top_space_layer) {
-    q = elc_params.delta_mid_top * p1.p.q * p2.p.q;
-    pos[0] = p1.r.p[0];
-    pos[1] = p1.r.p[1];
-    pos[2] = 2 * elc_params.h - p1.r.p[2];
-
-    eng += p3m_pair_energy(q, get_mi_vector(p2.r.p, pos, box_geo).norm());
-  }
-
-  if (p2.r.p[2] < elc_params.space_layer) {
-    q = elc_params.delta_mid_bot * p1.p.q * p2.p.q;
-    pos[0] = p2.r.p[0];
-    pos[1] = p2.r.p[1];
-    pos[2] = -p2.r.p[2];
-
-    eng += p3m_pair_energy(q, get_mi_vector(p1.r.p, pos, box_geo).norm());
-  } else if (p2.r.p[2] > elc_params.top_space_layer) {
-    q = elc_params.delta_mid_top * p1.p.q * p2.p.q;
-    pos[0] = p2.r.p[0];
-    pos[1] = p2.r.p[1];
-    pos[2] = 2 * elc_params.h - p2.r.p[2];
-
-    eng += p3m_pair_energy(q, get_mi_vector(p1.r.p, pos, box_geo).norm());
-  }
+  eng += ELC_P3M_dielectric_layers_energy_contribution(pos1, pos2, q1q2);
+  eng += ELC_P3M_dielectric_layers_energy_contribution(pos2, pos1, q1q2);
 
   return eng;
 }
@@ -1124,27 +1168,13 @@ double ELC_P3M_dielectric_layers_energy_contribution(Particle const &p1,
 //////////////////////////////////////////////////////////////////////////////////
 
 double ELC_P3M_dielectric_layers_energy_self(ParticleRange const &particles) {
-  Utils::Vector3d pos;
-  double q;
   double eng = 0.0;
 
   for (auto const &p : particles) {
-    if (p.r.p[2] < elc_params.space_layer) {
-      q = elc_params.delta_mid_bot * p.p.q * p.p.q;
-      pos[0] = p.r.p[0];
-      pos[1] = p.r.p[1];
-      pos[2] = -p.r.p[2];
-
-      eng += p3m_pair_energy(q, get_mi_vector(p.r.p, pos, box_geo).norm());
-    } else if (p.r.p[2] > elc_params.top_space_layer) {
-      q = elc_params.delta_mid_top * p.p.q * p.p.q;
-      pos[0] = p.r.p[0];
-      pos[1] = p.r.p[1];
-      pos[2] = 2 * elc_params.h - p.r.p[2];
-
-      eng += p3m_pair_energy(q, get_mi_vector(p.r.p, pos, box_geo).norm());
-    }
+    eng += ELC_P3M_dielectric_layers_energy_contribution(p.r.p, p.r.p,
+                                                         p.p.q * p.p.q);
   }
+
   return eng;
 }
 
