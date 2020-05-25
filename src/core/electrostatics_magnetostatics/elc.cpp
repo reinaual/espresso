@@ -61,14 +61,9 @@ ELC_struct elc_params = {1e100, 10,    1, 0, true, true, false, 1,
 
 /** \name Product decomposition data organization
  *  For the cell blocks it is assumed that the lower blocks part is in the
- *  lower half. This has to have positive sign, so that has to be first.
+ *  lower half.
  */
 /*@{*/
-#define POQESP 0
-#define POQECP 1
-#define POQESM 2
-#define POQECM 3
-
 #define PQESSP 0
 #define PQESCP 1
 #define PQECSP 2
@@ -99,24 +94,11 @@ static std::vector<SCCache> scycache;
  * LOCAL FUNCTIONS
  ****************************************/
 
-static void distribute(int size);
-/** \name p=0 per frequency code */
-/*@{*/
-static void setup_P(int p, double omega, const ParticleRange &particles);
-static void add_P_force(const ParticleRange &particles);
-static double P_energy(double omega, int n_part);
-/*@}*/
-/** \name q=0 per frequency code */
-/*@{*/
-static void setup_Q(int q, double omega, const ParticleRange &particles);
-static void add_Q_force(const ParticleRange &particles);
-static double Q_energy(double omega, int n_part);
-/*@}*/
 /** \name p,q <> 0 per frequency code */
 /*@{*/
-static void setup_PQ(int p, int q, double omega,
+static void setup_PQ(size_t p, size_t q, double omega,
                      const ParticleRange &particles);
-static void add_PQ_force(int p, int q, double omega,
+static void add_PQ_force(size_t p, size_t q, double omega,
                          const ParticleRange &particles);
 static double PQ_energy(double omega, int n_part);
 /*@}*/
@@ -147,12 +129,12 @@ template <size_t dir>
 static std::vector<SCCache> sc_cache(const ParticleRange &particles, int n_freq,
                                      double u) {
   auto const n_part = particles.size();
-  std::vector<SCCache> ret(n_freq * n_part);
+  std::vector<SCCache> ret((n_freq + 1) * n_part);
 
-  for (size_t freq = 1; freq <= n_freq; freq++) {
-    double pref = C_2PI * u * freq;
+  for (size_t freq = 0; freq <= n_freq; freq++) {
+    const double pref = C_2PI * u * freq;
 
-    size_t o = (freq - 1) * n_part;
+    size_t o = freq * n_part;
     for (auto const &part : particles) {
       auto const arg = pref * part.r.p[dir];
       ret[o++] = {sin(arg), cos(arg)};
@@ -502,290 +484,10 @@ static void add_z_force(const ParticleRange &particles) {
 }
 
 /*****************************************************************/
-/* PoQ exp sum */
-/*****************************************************************/
-
-static void setup_P(int p, double omega, const ParticleRange &particles) {
-  double const pref = -coulomb.prefactor * 4 * M_PI * ux * uy /
-                      (expm1(omega * box_geo.length()[2]));
-  double const pref_di = coulomb.prefactor * 4 * M_PI * ux * uy;
-  int const size = 4;
-  double lclimgebot[4], lclimgetop[4], lclimge[4];
-  double fac_delta_mid_bot = 1, fac_delta_mid_top = 1, fac_delta = 1;
-
-  if (elc_params.dielectric_contrast_on) {
-    double const fac_elc =
-        1.0 / (1 - elc_params.delta_mid_top * elc_params.delta_mid_bot *
-                       exp(-omega * 2 * elc_params.h));
-    fac_delta_mid_bot = elc_params.delta_mid_bot * fac_elc;
-    fac_delta_mid_top = elc_params.delta_mid_top * fac_elc;
-    fac_delta = fac_delta_mid_bot * elc_params.delta_mid_top;
-  }
-
-  clear_vec(lclimge, size);
-  clear_vec(gblcblk, size);
-
-  int ic = 0;
-  auto const o = static_cast<int>((p - 1) * particles.size());
-  for (auto &p : particles) {
-    double e = exp(omega * p.r.p[2]);
-
-    partblk[size * ic + POQESM] = p.p.q * scxcache[o + ic].s / e;
-    partblk[size * ic + POQESP] = p.p.q * scxcache[o + ic].s * e;
-    partblk[size * ic + POQECM] = p.p.q * scxcache[o + ic].c / e;
-    partblk[size * ic + POQECP] = p.p.q * scxcache[o + ic].c * e;
-
-    add_vec(gblcblk, gblcblk, block(partblk.data(), ic, size), size);
-
-    if (elc_params.dielectric_contrast_on) {
-      if (p.r.p[2] < elc_params.space_layer) { // handle the lower case first
-        // negative sign is okay here as the image is located at -p.r.p[2]
-
-        e = exp(-omega * p.r.p[2]);
-
-        double const scale = p.p.q * elc_params.delta_mid_bot;
-
-        lclimgebot[POQESM] = scxcache[o + ic].s / e;
-        lclimgebot[POQESP] = scxcache[o + ic].s * e;
-        lclimgebot[POQECM] = scxcache[o + ic].c / e;
-        lclimgebot[POQECP] = scxcache[o + ic].c * e;
-
-        addscale_vec(gblcblk, scale, lclimgebot, gblcblk, size);
-
-        e = (exp(omega * (-p.r.p[2] - 2 * elc_params.h)) *
-                 elc_params.delta_mid_bot +
-             exp(omega * (p.r.p[2] - 2 * elc_params.h))) *
-            fac_delta;
-
-      } else {
-
-        e = (exp(omega * (-p.r.p[2])) +
-             exp(omega * (p.r.p[2] - 2 * elc_params.h)) *
-                 elc_params.delta_mid_top) *
-            fac_delta_mid_bot;
-      }
-
-      lclimge[POQESP] += p.p.q * scxcache[o + ic].s * e;
-      lclimge[POQECP] += p.p.q * scxcache[o + ic].c * e;
-
-      if (p.r.p[2] > (elc_params.h -
-                      elc_params.space_layer)) { // handle the upper case now
-
-        e = exp(omega * (2 * elc_params.h - p.r.p[2]));
-
-        double const scale = p.p.q * elc_params.delta_mid_top;
-
-        lclimgetop[POQESM] = scxcache[o + ic].s / e;
-        lclimgetop[POQESP] = scxcache[o + ic].s * e;
-        lclimgetop[POQECM] = scxcache[o + ic].c / e;
-        lclimgetop[POQECP] = scxcache[o + ic].c * e;
-
-        addscale_vec(gblcblk, scale, lclimgetop, gblcblk, size);
-
-        e = (exp(omega * (p.r.p[2] - 4 * elc_params.h)) *
-                 elc_params.delta_mid_top +
-             exp(omega * (-p.r.p[2] - 2 * elc_params.h))) *
-            fac_delta;
-
-      } else {
-
-        e = (exp(omega * (+p.r.p[2] - 2 * elc_params.h)) +
-             exp(omega * (-p.r.p[2] - 2 * elc_params.h)) *
-                 elc_params.delta_mid_bot) *
-            fac_delta_mid_top;
-      }
-
-      lclimge[POQESM] += p.p.q * scxcache[o + ic].s * e;
-      lclimge[POQECM] += p.p.q * scxcache[o + ic].c * e;
-    }
-
-    ic++;
-  }
-
-  scale_vec(pref, gblcblk, size);
-
-  if (elc_params.dielectric_contrast_on) {
-    scale_vec(pref_di, lclimge, size);
-    add_vec(gblcblk, gblcblk, lclimge, size);
-  }
-}
-
-static void setup_Q(int q, double omega, const ParticleRange &particles) {
-  double const pref = -coulomb.prefactor * 4 * M_PI * ux * uy /
-                      (expm1(omega * box_geo.length()[2]));
-  double const pref_di = coulomb.prefactor * 4 * M_PI * ux * uy;
-  int const size = 4;
-  double lclimgebot[4], lclimgetop[4], lclimge[4];
-  double fac_delta_mid_bot = 1, fac_delta_mid_top = 1, fac_delta = 1;
-
-  if (elc_params.dielectric_contrast_on) {
-    double const fac_elc =
-        1.0 / (1 - elc_params.delta_mid_top * elc_params.delta_mid_bot *
-                       exp(-omega * 2 * elc_params.h));
-    fac_delta_mid_bot = elc_params.delta_mid_bot * fac_elc;
-    fac_delta_mid_top = elc_params.delta_mid_top * fac_elc;
-    fac_delta = fac_delta_mid_bot * elc_params.delta_mid_top;
-  }
-
-  clear_vec(lclimge, size);
-  clear_vec(gblcblk, size);
-
-  int ic = 0;
-  auto const o = static_cast<int>((q - 1) * particles.size());
-  for (auto &p : particles) {
-    double e = exp(omega * p.r.p[2]);
-
-    partblk[size * ic + POQESM] = p.p.q * scycache[o + ic].s / e;
-    partblk[size * ic + POQESP] = p.p.q * scycache[o + ic].s * e;
-    partblk[size * ic + POQECM] = p.p.q * scycache[o + ic].c / e;
-    partblk[size * ic + POQECP] = p.p.q * scycache[o + ic].c * e;
-
-    add_vec(gblcblk, gblcblk, block(partblk.data(), ic, size), size);
-
-    if (elc_params.dielectric_contrast_on) {
-      if (p.r.p[2] < elc_params.space_layer) { // handle the lower case first
-        // negative sign before omega is okay here as the image is located
-        // at -p.r.p[2]
-
-        e = exp(-omega * p.r.p[2]);
-
-        double const scale = p.p.q * elc_params.delta_mid_bot;
-
-        lclimgebot[POQESM] = scycache[o + ic].s / e;
-        lclimgebot[POQESP] = scycache[o + ic].s * e;
-        lclimgebot[POQECM] = scycache[o + ic].c / e;
-        lclimgebot[POQECP] = scycache[o + ic].c * e;
-
-        addscale_vec(gblcblk, scale, lclimgebot, gblcblk, size);
-
-        e = (exp(omega * (-p.r.p[2] - 2 * elc_params.h)) *
-                 elc_params.delta_mid_bot +
-             exp(omega * (p.r.p[2] - 2 * elc_params.h))) *
-            fac_delta;
-
-      } else {
-
-        e = (exp(omega * (-p.r.p[2])) +
-             exp(omega * (p.r.p[2] - 2 * elc_params.h)) *
-                 elc_params.delta_mid_top) *
-            fac_delta_mid_bot;
-      }
-
-      lclimge[POQESP] += p.p.q * scycache[o + ic].s * e;
-      lclimge[POQECP] += p.p.q * scycache[o + ic].c * e;
-
-      if (p.r.p[2] > (elc_params.h -
-                      elc_params.space_layer)) { // handle the upper case now
-
-        e = exp(omega * (2 * elc_params.h - p.r.p[2]));
-
-        double const scale = p.p.q * elc_params.delta_mid_top;
-
-        lclimgetop[POQESM] = scycache[o + ic].s / e;
-        lclimgetop[POQESP] = scycache[o + ic].s * e;
-        lclimgetop[POQECM] = scycache[o + ic].c / e;
-        lclimgetop[POQECP] = scycache[o + ic].c * e;
-
-        addscale_vec(gblcblk, scale, lclimgetop, gblcblk, size);
-
-        e = (exp(omega * (p.r.p[2] - 4 * elc_params.h)) *
-                 elc_params.delta_mid_top +
-             exp(omega * (-p.r.p[2] - 2 * elc_params.h))) *
-            fac_delta;
-
-      } else {
-
-        e = (exp(omega * (p.r.p[2] - 2 * elc_params.h)) +
-             exp(omega * (-p.r.p[2] - 2 * elc_params.h)) *
-                 elc_params.delta_mid_bot) *
-            fac_delta_mid_top;
-      }
-
-      lclimge[POQESM] += p.p.q * scycache[o + ic].s * e;
-      lclimge[POQECM] += p.p.q * scycache[o + ic].c * e;
-    }
-
-    ic++;
-  }
-
-  scale_vec(pref, gblcblk, size);
-
-  if (elc_params.dielectric_contrast_on) {
-    scale_vec(pref_di, lclimge, size);
-    add_vec(gblcblk, gblcblk, lclimge, size);
-  }
-}
-
-static void add_P_force(const ParticleRange &particles) {
-  int ic;
-  int size = 4;
-
-  ic = 0;
-  for (auto &p : particles) {
-    p.f.f[0] += partblk[size * ic + POQESM] * gblcblk[POQECP] -
-                partblk[size * ic + POQECM] * gblcblk[POQESP] +
-                partblk[size * ic + POQESP] * gblcblk[POQECM] -
-                partblk[size * ic + POQECP] * gblcblk[POQESM];
-    p.f.f[2] += partblk[size * ic + POQECM] * gblcblk[POQECP] +
-                partblk[size * ic + POQESM] * gblcblk[POQESP] -
-                partblk[size * ic + POQECP] * gblcblk[POQECM] -
-                partblk[size * ic + POQESP] * gblcblk[POQESM];
-    ic++;
-  }
-}
-
-static double P_energy(double omega, int n_part) {
-  int size = 4;
-  double eng = 0;
-  double pref = 1 / omega;
-
-  for (unsigned ic = 0; ic < n_part; ic++) {
-    eng += pref * (partblk[size * ic + POQECM] * gblcblk[POQECP] +
-                   partblk[size * ic + POQESM] * gblcblk[POQESP] +
-                   partblk[size * ic + POQECP] * gblcblk[POQECM] +
-                   partblk[size * ic + POQESP] * gblcblk[POQESM]);
-  }
-
-  return eng;
-}
-
-static void add_Q_force(const ParticleRange &particles) {
-  int ic;
-  int size = 4;
-
-  ic = 0;
-  for (auto &p : particles) {
-    p.f.f[1] += partblk[size * ic + POQESM] * gblcblk[POQECP] -
-                partblk[size * ic + POQECM] * gblcblk[POQESP] +
-                partblk[size * ic + POQESP] * gblcblk[POQECM] -
-                partblk[size * ic + POQECP] * gblcblk[POQESM];
-    p.f.f[2] += partblk[size * ic + POQECM] * gblcblk[POQECP] +
-                partblk[size * ic + POQESM] * gblcblk[POQESP] -
-                partblk[size * ic + POQECP] * gblcblk[POQECM] -
-                partblk[size * ic + POQESP] * gblcblk[POQESM];
-    ic++;
-  }
-}
-
-static double Q_energy(double omega, int n_part) {
-  int size = 4;
-  double eng = 0;
-  double pref = 1 / omega;
-
-  for (unsigned ic = 0; ic < n_part; ic++) {
-    eng += pref * (partblk[size * ic + POQECM] * gblcblk[POQECP] +
-                   partblk[size * ic + POQESM] * gblcblk[POQESP] +
-                   partblk[size * ic + POQECP] * gblcblk[POQECM] +
-                   partblk[size * ic + POQESP] * gblcblk[POQESM]);
-  }
-  return eng;
-}
-
-/*****************************************************************/
 /* PQ particle blocks */
 /*****************************************************************/
 
-static void setup_PQ(int p, int q, double omega,
+static void setup_PQ(size_t p, size_t q, double omega,
                      const ParticleRange &particles) {
   double const pref = -coulomb.prefactor * 8 * M_PI * ux * uy /
                       (expm1(omega * box_geo.length()[2]));
@@ -806,8 +508,8 @@ static void setup_PQ(int p, int q, double omega,
   clear_vec(gblcblk, size);
 
   int ic = 0;
-  auto const ox = static_cast<int>((p - 1) * particles.size());
-  auto const oy = static_cast<int>((q - 1) * particles.size());
+  auto const ox = static_cast<size_t>(p * particles.size());
+  auto const oy = static_cast<size_t>(q * particles.size());
   for (auto const &p : particles) {
     double e = exp(omega * p.r.p[2]);
 
@@ -915,7 +617,7 @@ static void setup_PQ(int p, int q, double omega,
   }
 }
 
-static void add_PQ_force(int p, int q, double omega,
+static void add_PQ_force(size_t p, size_t q, double omega,
                          const ParticleRange &particles) {
   int ic;
 
@@ -976,8 +678,10 @@ static double PQ_energy(double omega, int n_part) {
 /*****************************************************************/
 
 void ELC_add_force(const ParticleRange &particles) {
-  auto const n_scxcache = int(ceil(elc_params.far_cut / ux) + 1);
-  auto const n_scycache = int(ceil(elc_params.far_cut / uy) + 1);
+  auto const n_scxcache =
+      int(ceil(elc_params.far_cut * box_geo.length()[0]) + 1);
+  auto const n_scycache =
+      int(ceil(elc_params.far_cut * box_geo.length()[1]) + 1);
 
   prepare_sc_cache(particles, n_scxcache, ux, n_scycache, uy);
   partblk.resize(particles.size() * 8);
@@ -985,27 +689,16 @@ void ELC_add_force(const ParticleRange &particles) {
   add_dipole_force(particles);
   add_z_force(particles);
 
-  /* the second condition is just for the case of numerical accident */
-  for (int p = 1; ux * (p - 1) < elc_params.far_cut && p <= n_scxcache; p++) {
-    auto const omega = C_2PI * ux * p;
-    setup_P(p, omega, particles);
-    distribute(4);
-    add_P_force(particles);
-  }
+  for (size_t p = 0; p < n_scxcache; ++p) {
+    for (size_t q = 0;
+         sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q)) < elc_params.far_cut;
+         ++q) {
+      if (p == 0 and q == 0) {
+        continue;
+      }
 
-  for (int q = 1; uy * (q - 1) < elc_params.far_cut && q <= n_scycache; q++) {
-    auto const omega = C_2PI * uy * q;
-    setup_Q(q, omega, particles);
-    distribute(4);
-    add_Q_force(particles);
-  }
-
-  for (int p = 1; ux * (p - 1) < elc_params.far_cut && p <= n_scxcache; p++) {
-    for (int q = 1; Utils::sqr(ux * (p - 1)) + Utils::sqr(uy * (q - 1)) <
-                        elc_params.far_cut2 &&
-                    q <= n_scycache;
-         q++) {
-      auto const omega = C_2PI * sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
+      auto const omega =
+          C_2PI * sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
       setup_PQ(p, q, omega, particles);
       distribute(8);
       add_PQ_force(p, q, omega, particles);
@@ -1017,38 +710,30 @@ double ELC_energy(const ParticleRange &particles) {
   auto eng = dipole_energy(particles);
   eng += z_energy(particles);
 
-  auto const n_scxcache = int(ceil(elc_params.far_cut / ux) + 1);
-  auto const n_scycache = int(ceil(elc_params.far_cut / uy) + 1);
+  auto const n_scxcache =
+      size_t(ceil(elc_params.far_cut * box_geo.length()[0]) + 1);
+  auto const n_scycache =
+      size_t(ceil(elc_params.far_cut * box_geo.length()[1]) + 1);
   prepare_sc_cache(particles, n_scxcache, ux, n_scycache, uy);
 
   auto const n_localpart = particles.size();
   partblk.resize(n_localpart * 8);
 
-  /* the second condition is just for the case of numerical accident */
-  for (int p = 1; ux * (p - 1) < elc_params.far_cut && p <= n_scxcache; p++) {
-    auto const omega = C_2PI * ux * p;
-    setup_P(p, omega, particles);
-    distribute(4);
-    eng += P_energy(omega, n_localpart);
-  }
-  for (int q = 1; uy * (q - 1) < elc_params.far_cut && q <= n_scycache; q++) {
-    auto const omega = C_2PI * uy * q;
-    setup_Q(q, omega, particles);
-    distribute(4);
-    eng += Q_energy(omega, n_localpart);
-  }
-  for (int p = 1; ux * (p - 1) < elc_params.far_cut && p <= n_scxcache; p++) {
-    for (int q = 1; Utils::sqr(ux * (p - 1)) + Utils::sqr(uy * (q - 1)) <
-                        elc_params.far_cut2 &&
-                    q <= n_scycache;
-         q++) {
-      auto const omega = C_2PI * sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
+  for (size_t p = 0; p < n_scxcache; ++p) {
+    for (size_t q = 0;
+         sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q)) < elc_params.far_cut;
+         ++q) {
+      if (p == 0 and q == 0) {
+        continue;
+      }
+
+      auto const omega =
+          C_2PI * sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
       setup_PQ(p, q, omega, particles);
       distribute(8);
       eng += PQ_energy(omega, n_localpart);
     }
   }
-  /* we count both i<->j and j<->i, so return just half of it */
   return 0.5 * eng;
 }
 
@@ -1068,7 +753,7 @@ int ELC_tune(double error) {
   elc_params.far_cut = min_inv_boxl;
 
   do {
-    const auto prefactor = 2 * Utils::pi() * elc_params.far_cut;
+    const auto prefactor = C_2PI * elc_params.far_cut;
 
     const auto sum = prefactor + 2 * (ux + uy);
     const auto den = -expm1(-prefactor * lz);
