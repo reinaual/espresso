@@ -697,8 +697,7 @@ void ELC_add_force(const ParticleRange &particles) {
         continue;
       }
 
-      auto const omega =
-          C_2PI * sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
+      auto const omega = C_2PI * sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
       setup_PQ(p, q, omega, particles);
       distribute(8);
       add_PQ_force(p, q, omega, particles);
@@ -727,8 +726,7 @@ double ELC_energy(const ParticleRange &particles) {
         continue;
       }
 
-      auto const omega =
-          C_2PI * sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
+      auto const omega = C_2PI * sqrt(Utils::sqr(ux * p) + Utils::sqr(uy * q));
       setup_PQ(p, q, omega, particles);
       distribute(8);
       eng += PQ_energy(omega, n_localpart);
@@ -820,25 +818,13 @@ void ELC_init() {
   ELC_setup_constants();
 
   if (elc_params.dielectric_contrast_on) {
-    // recalculate the space layer size
-    // set the space_layer to be 1/3 of the gap size, so that box = layer
-    elc_params.space_layer = (1. / 3.) * elc_params.gap_size;
-    // but make sure we leave enough space to not have to bother with
-    // overlapping
-    // realspace P3M
-    double maxsl = elc_params.gap_size - p3m.params.r_cut;
-    // and make sure the space layer is not bigger than half the actual
-    // simulation box,
-    // to avoid overlaps
-    if (maxsl > .5 * elc_params.h)
-      maxsl = .5 * elc_params.h;
-    if (elc_params.space_layer > maxsl) {
-      if (maxsl <= 0) {
-        runtimeErrorMsg() << "P3M real space cutoff too large for ELC w/ "
-                             "dielectric contrast";
-      } else
-        elc_params.space_layer = maxsl;
+    // make sure P3M real space summation cutoff is less than half the gap_size
+    // to prevent overlap
+    if (elc_params.gap_size < p3m.params.r_cut) {
+      runtimeErrorMsg() << "P3M real space cutoff too large for ELC w/ "
+                           "dielectric contrast";
     }
+    elc_params.space_layer = (1. / 3.) * elc_params.gap_size;
 
     // set the space_box
     elc_params.space_box = elc_params.gap_size - 2 * elc_params.space_layer;
