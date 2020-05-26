@@ -1777,7 +1777,7 @@ void MMM2D_dielectric_layers_force_contribution() {
   if (!mmm2d_params.dielectric_contrast_on)
     return;
 
-  auto const pref = coulomb.prefactor * C_2PI * ux * uy;
+  auto const pref = C_2PI * ux * uy;
 
   // First and last layer near field force contribution
   if (this_node == 0) {
@@ -1798,7 +1798,7 @@ void MMM2D_dielectric_layers_force_contribution() {
         force[2] -= pref * charge_factor;
       }
 
-      p1.f.f += force;
+      p1.f.f += coulomb.prefactor * force;
     }
   }
 
@@ -1821,7 +1821,7 @@ void MMM2D_dielectric_layers_force_contribution() {
         force[2] += pref * charge_factor;
       }
 
-      p1.f.f += force;
+      p1.f.f += coulomb.prefactor * force;
     }
   }
 }
@@ -1830,7 +1830,7 @@ double MMM2D_dielectric_layers_energy_contribution() {
   if (!mmm2d_params.dielectric_contrast_on)
     return 0.0;
 
-  auto const pref = coulomb.prefactor * C_2PI * ux * uy;
+  auto const pref = C_2PI * ux * uy;
   double eng = 0.0;
 
   if (this_node == 0) {

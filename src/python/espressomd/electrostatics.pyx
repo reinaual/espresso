@@ -717,7 +717,7 @@ IF ELECTROSTATICS:
                     self._params["top"] < 0 or self._params["mid"] < 0 or self._params["bot"] < 0):
                 raise ValueError("Dielectric constants should be > 0!")
             if self._params["dielectric_contrast_on"] == 1 and (
-                    self._params["delta_mid_top"] == default_params["delta_mid_top"] or self._params["delta_mid_bot"] == default_params["delta_mid_bot"]):
+                    self._params["delta_mid_top"] == default_params["delta_mid_top"] and self._params["delta_mid_bot"] == default_params["delta_mid_bot"]):
                 raise ValueError("Dielectric contrast not set!")
             if self._params["dielectric"] and self._params["dielectric_contrast_on"]:
                 raise ValueError(
