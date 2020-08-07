@@ -364,8 +364,8 @@ double calc_energy_long_range(const ParticleRange &particles) {
   case COULOMB_TEST2D_P3M:
     TEST2D_modify_P3M_sums(particles);
     TEST2D_charge_assign_P3M(particles);
-    energy.coulomb[1] = p3m_calc_kspace_forces(false, true, particles);
-    energy.coulomb[1] += TEST2D_self_energy(particles);
+    energy = p3m_calc_kspace_forces(false, true, particles);
+    energy += TEST2D_self_energy(particles);
 #endif
 #ifdef SCAFACOS
   case COULOMB_SCAFACOS:
