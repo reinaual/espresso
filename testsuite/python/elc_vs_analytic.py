@@ -20,6 +20,7 @@ import espressomd
 import numpy as np
 import espressomd.electrostatics
 from espressomd import electrostatic_extensions
+from math import log10
 
 
 @utx.skipIfMissingFeatures(["P3M"])
@@ -37,11 +38,11 @@ class ELC_vs_analytic(ut.TestCase):
 
     number_samples = 6 if '@WITH_COVERAGE@' == 'ON' else 12
     minimum_distance_to_wall = 0.1
-    zPos = np.linspace(
-        minimum_distance_to_wall,
-        box_l - minimum_distance_to_wall - distance,
+    z_positions = np.logspace(
+        log10(minimum_distance_to_wall),
+        log10(box_l - minimum_distance_to_wall - distance),
         number_samples)
-    q = np.arange(-5.0, 5.1, 2.5)
+    charge = np.arange(-5.0, 5.1, 2.5)
     prefactor = 2.0
 
     def test_elc(self):
@@ -50,9 +51,8 @@ class ELC_vs_analytic(ut.TestCase):
         simulation box with dielectric contrast on the bottom of the box,
         which can be calculated analytically with image charges.
         """
-        self.system.part.add(id=1, pos=self.system.box_l / 2., q=self.q[0])
-        self.system.part.add(id=2, pos=self.system.box_l / 2. + [0, 0, self.distance],
-                             q=-self.q[0])
+        self.system.part.add(id=1, pos=self.system.box_l / 2., q=self.charge[0])
+        self.system.part.add(id=2, pos=self.system.box_l / 2. + [0, 0, self.distance], q=-self.charge[0])
 
         self.system.box_l = [self.box_l, self.box_l, self.box_l + self.elc_gap]
         self.system.cell_system.set_domain_decomposition(
@@ -73,23 +73,44 @@ class ELC_vs_analytic(ut.TestCase):
         elc_results = self.scan()
 
         # ANALYTIC SOLUTION
-        charge_reshaped = self.prefactor * np.square(self.q.reshape(-1, 1))
+        # bottom space-layer has dieletric contrast
+        charge_reshaped = self.prefactor * np.square(self.charge.reshape(-1, 1))
         analytic_force = charge_reshaped * (1 / self.distance ** 2 + self.delta_mid_bot * (
-            1 / np.square(2 * self.zPos) - 1 / np.square(2 * self.zPos + self.distance)))
+                1 / np.square(2 * self.z_positions) - 1 / np.square(2 * self.z_positions + self.distance)))
         analytic_energy = charge_reshaped * (-1 / self.distance + self.delta_mid_bot * (1 / (
-            4 * self.zPos) - 1 / (2 * self.zPos + self.distance) + 1 / (4 * (self.zPos + self.distance))))
+                4 * self.z_positions) - 1 / (2 * self.z_positions + self.distance) + 1 / (4 * (
+                self.z_positions + self.distance))))
 
         analytic_results = np.dstack((analytic_force, analytic_energy))
+        elc_results = self.scan()
+
+        np.testing.assert_allclose(
+            elc_results, analytic_results, rtol=0, atol=self.check_accuracy)
+
+        # top space-layer now has dielectric contrast
+        self.delta_mid_bot, self.delta_mid_top = self.delta_mid_top, self.delta_mid_bot
+        elc.set_params(delta_mid_bot=self.delta_mid_bot, delta_mid_top=self.delta_mid_top)
+        analytic_force = charge_reshaped * (1 / self.distance ** 2 + self.delta_mid_top * (-1 / np.square(2 * (
+                self.box_l - self.z_positions)) + 1 / np.square(2 * (self.box_l - self.z_positions - self.distance) +
+                                                                self.distance)))
+        analytic_energy = charge_reshaped * (-1 / self.distance + self.delta_mid_top * (1 / (
+                4 * (self.box_l - self.z_positions - self.distance)) - 1 / (2 * (self.box_l - self.z_positions -
+                                                                                 self.distance) + self.distance) + 1
+                                                                                        / (4 * (self.box_l -
+                                                                                                self.z_positions))))
+
+        analytic_results = np.dstack((analytic_force, analytic_energy))
+        elc_results = self.scan()
 
         np.testing.assert_allclose(
             elc_results, analytic_results, rtol=0, atol=self.check_accuracy)
 
     def scan(self):
-        result_array = np.empty((len(self.q), len(self.zPos), 2))
-        for chargeIndex, charge in enumerate(self.q):
+        result_array = np.empty((len(self.charge), len(self.z_positions), 2))
+        for chargeIndex, charge in enumerate(self.charge):
             self.system.part[1].q = charge
             self.system.part[2].q = -charge
-            for i, z in enumerate(self.zPos):
+            for i, z in enumerate(self.z_positions):
                 pos = self.system.part[1].pos
                 self.system.part[1].pos = [pos[0], pos[1], z]
                 self.system.part[2].pos = [pos[0], pos[1], z + self.distance]
