@@ -235,7 +235,7 @@ static void add_dipole_force(const ParticleRange &particles) {
 
   for (auto const &p : local_particles) {
     gblcblk[0] += p.p.q * (p.r.p[2] - shift);
-    gblcblk[1] += p.p.q * p.r.p[2];
+    gblcblk[1] += p.p.q * (p.r.p[2] - 0.5 * elc_params.h);
     gblcblk[2] += p.p.q;
 
     if (elc_params.dielectric_contrast_on) {
@@ -244,15 +244,14 @@ static void add_dipole_force(const ParticleRange &particles) {
         gblcblk[2] += elc_params.delta_mid_bot * p.p.q;
       }
       if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-        gblcblk[0] += elc_params.delta_mid_top * p.p.q *
-                      (2 * elc_params.h - p.r.p[2] - shift);
+        gblcblk[0] += elc_params.delta_mid_top * p.p.q * (2 * elc_params.h - p.r.p[2] - shift);
         gblcblk[2] += elc_params.delta_mid_top * p.p.q;
       }
     }
   }
 
   gblcblk[0] *= pref;
-  gblcblk[1] *= pref * height_inverse / uz;
+  gblcblk[1] *= pref;
   gblcblk[2] *= pref;
 
   distribute(size);
@@ -262,7 +261,7 @@ static void add_dipole_force(const ParticleRange &particles) {
 
   // Const. potential contribution
   if (elc_params.const_pot) {
-    coulomb.field_induced = gblcblk[1];
+    coulomb.field_induced = 0.25 * gblcblk[1] * uz;
     coulomb.field_applied = elc_params.pot_diff * height_inverse;
     field_tot -= coulomb.field_applied + coulomb.field_induced;
   }
@@ -1120,12 +1119,12 @@ int ELC_sanity_checks() {
 
   // Disable this line to make ELC work again with non-neutral systems and
   // metallic boundaries
-//  if (elc_params.dielectric_contrast_on && elc_params.const_pot &&
-//      p3m.square_sum_q > ROUND_ERROR_PREC) {
-//    runtimeErrorMsg() << "ELC does not currently support non-neutral "
-//                         "systems with a dielectric contrast.";
-//    return ES_ERROR;
-//  }
+  //  if (elc_params.dielectric_contrast_on && elc_params.const_pot &&
+  //      p3m.square_sum_q > ROUND_ERROR_PREC) {
+  //    runtimeErrorMsg() << "ELC does not currently support non-neutral "
+  //                         "systems with a dielectric contrast.";
+  //    return ES_ERROR;
+  //  }
 
   return ES_OK;
 }
