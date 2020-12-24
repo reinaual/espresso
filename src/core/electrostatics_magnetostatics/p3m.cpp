@@ -233,20 +233,22 @@ void p3m_set_tune_params(double r_cut, const int mesh[3], int cao, double alpha,
     p3m.params.accuracy = accuracy;
 }
 
-int p3m_set_params(double r_cut, const int *mesh, int cao, double alpha,
-                   double accuracy) {
+void p3m_set_params(double r_cut, const int *mesh, int cao, double alpha,
+                    double accuracy) {
   if (coulomb.method != COULOMB_P3M && coulomb.method != COULOMB_ELC_P3M &&
       coulomb.method != COULOMB_P3M_GPU)
     coulomb.method = COULOMB_P3M;
 
   if (r_cut < 0)
-    return -1;
+    throw std::invalid_argument("P3M: r_cut value has to be positive! " +
+                                std::to_string(r_cut));
 
   if ((mesh[0] < 0) || (mesh[1] < 0) || (mesh[2] < 0))
-    return -2;
+    throw std::invalid_argument("P3M: mesh values have to be positive!");
 
   if (cao < 1 || cao > 7 || cao > mesh[0] || cao > mesh[1] || cao > mesh[2])
-    return -3;
+    throw std::invalid_argument("P3M: cao is out of range! " +
+                                std::to_string(cao));
 
   p3m.params.r_cut = r_cut;
   p3m.params.r_cut_iL = r_cut * (1. / box_geo.length()[0]);
@@ -259,37 +261,33 @@ int p3m_set_params(double r_cut, const int *mesh, int cao, double alpha,
     p3m.params.alpha = alpha;
     p3m.params.alpha_L = alpha * box_geo.length()[0];
   } else if (alpha != -1.0)
-    return -4;
+    throw std::invalid_argument("P3M: alpha has to be positive! " +
+                                std::to_string(alpha));
 
   if (accuracy >= 0)
     p3m.params.accuracy = accuracy;
   else if (accuracy != -1.0)
-    return -5;
+    throw std::invalid_argument("P3M: accuracy has to be positive!" +
+                                std::to_string(accuracy));
 
   mpi_bcast_coulomb_params();
-
-  return 0;
 }
 
-int p3m_set_mesh_offset(double x, double y, double z) {
+void p3m_set_mesh_offset(double x, double y, double z) {
   if (x < 0.0 || x > 1.0 || y < 0.0 || y > 1.0 || z < 0.0 || z > 1.0)
-    return ES_ERROR;
+    throw std::invalid_argument("P3M: mesh offsets have to be between 0 and 1");
 
   p3m.params.mesh_off[0] = x;
   p3m.params.mesh_off[1] = y;
   p3m.params.mesh_off[2] = z;
 
   mpi_bcast_coulomb_params();
-
-  return ES_OK;
 }
 
-int p3m_set_eps(double eps) {
+void p3m_set_eps(double eps) {
   p3m.params.epsilon = eps;
 
   mpi_bcast_coulomb_params();
-
-  return ES_OK;
 }
 
 namespace {
