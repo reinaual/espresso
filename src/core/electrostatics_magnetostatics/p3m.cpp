@@ -1057,8 +1057,8 @@ int p3m_adaptive_tune(bool verbose) {
   }
 
   if (verbose) {
-    std::printf("mesh cao r_cut_iL     alpha_L      err          "
-                "rs_err     ks_err     time [ms]\n");
+    std::printf("mesh cao r_cut_iL    alpha_L     err         "
+                "rs_err    ks_err    time [ms]\n");
   }
 
   /* mesh loop */
