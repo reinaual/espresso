@@ -322,6 +322,9 @@ IF P3M == 1:
         tune : :obj:`bool`, optional
             Used to activate/deactivate the tuning method on activation.
             Defaults to ``True``.
+        verbose: :obj:`bool`, optional
+            Used to activate/deactivate the output of the tuning method
+            Defaults to ``True``.
         check_neutrality : :obj:`bool`, optional
             Raise a warning if the system is not electrically neutral when
             set to ``True`` (default).
@@ -364,6 +367,9 @@ IF P3M == 1:
                 The real space cutoff
             tune : :obj:`bool`, optional
                 Used to activate/deactivate the tuning method on activation.
+                Defaults to ``True``.
+            verbose: :obj:`bool`, optional
+                Used to activate/deactivate the output of the tuning method
                 Defaults to ``True``.
             check_neutrality : :obj:`bool`, optional
                 Raise a warning if the system is not electrically neutral when
