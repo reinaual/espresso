@@ -272,7 +272,7 @@ int p3m_set_params(double r_cut, const int *mesh, int cao, double alpha,
 }
 
 int p3m_set_mesh_offset(double x, double y, double z) {
-  if (x < 0.0 || x > 1.0 || y < 0.0 || y > 1.0 || z < 0.0 || z > 1.0)
+  if (x <= 0.0 || x > 1.0 || y <= 0.0 || y > 1.0 || z <= 0.0 || z > 1.0)
     return ES_ERROR;
 
   p3m.params.mesh_off[0] = x;
