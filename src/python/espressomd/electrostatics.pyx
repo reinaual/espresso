@@ -24,7 +24,7 @@ import numpy as np
 IF SCAFACOS == 1:
     from .scafacos import ScafacosConnector
     from . cimport scafacos
-from .utils cimport handle_errors
+from .utils cimport handle_errors, check_range_or_except
 from .utils import is_valid_type, check_type_or_throw_except, to_str
 from . cimport checks
 from .analyze cimport partCfg, PartCfg
@@ -228,9 +228,12 @@ IF P3M == 1:
                 self._params["epsilon"], 1, float,
                 "epsilon should be a double or 'metallic'")
 
-            if self._params["mesh_off"] != default_params["mesh_off"]:
-                check_type_or_throw_except(self._params["mesh_off"], 3, float,
-                                           "mesh_off should be a (3,) array_like of values between 0.0 and 1.0")
+            check_type_or_throw_except(
+                self._params["mesh_off"],
+                3,
+                float,
+                "mesh_off should be a (3,) array_like of values between 0.0 and 1.0")
+            check_range_or_except(self._params, "mesh_off", 0, True, 1, False)
 
             if not (self._params["alpha"] == default_params["alpha"]
                     or self._params["alpha"] > 0):
@@ -238,7 +241,8 @@ IF P3M == 1:
 
         def valid_keys(self):
             return ["mesh", "cao", "accuracy", "epsilon", "alpha", "r_cut",
-                    "prefactor", "tune", "check_neutrality", "verbose"]
+                    "prefactor", "tune", "check_neutrality", "verbose",
+                    "mesh_off"]
 
         def required_keys(self):
             return ["prefactor", "accuracy"]
@@ -250,7 +254,7 @@ IF P3M == 1:
                     "accuracy": 0,
                     "mesh": [0, 0, 0],
                     "epsilon": 0.0,
-                    "mesh_off": [-1, -1, -1],
+                    "mesh_off": [0.5, 0.5, 0.5],
                     "tune": True,
                     "check_neutrality": True,
                     "verbose": True}
@@ -317,6 +321,9 @@ IF P3M == 1:
         mesh : :obj:`int` or (3,) array_like of :obj:`int`, optional
             The number of mesh points in x, y and z direction. Use a single
             value for cubic boxes.
+        mesh_off : :obj:(3,) array_like of :obj:`float`, optional
+            Offset of the gridpoints
+            Defaults to ``(0.5, 0.5, 0.5)``.
         r_cut : :obj:`float`, optional
             The real space cutoff.
         tune : :obj:`bool`, optional
@@ -363,6 +370,9 @@ IF P3M == 1:
             mesh : :obj:`int` or (3,) array_like of :obj:`int`, optional
                 The number of mesh points in x, y and z direction. Use a single
                 value for cubic boxes.
+            mesh_off : :obj:(3,) array_like of :obj:`float`, optional
+                Offset of the gridpoints
+                Defaults to ``(0.5, 0.5, 0.5)``.
             r_cut : :obj:`float`, optional
                 The real space cutoff
             tune : :obj:`bool`, optional
