@@ -48,7 +48,8 @@ class P3M_tuning_test(ut.TestCase):
 
         self.add_charged_particles()
 
-        solver = espressomd.electrostatics.P3MGPU(prefactor=2, accuracy=1e-2)
+        solver = espressomd.electrostatics.P3MGPU(
+            prefactor=2, accuracy=1e-2, verbose=False)
         with self.assertRaisesRegex(Exception, 'python_p3m_adaptive_tune: ERROR: time_step not set'):
             self.system.actors.add(solver)
 
@@ -58,7 +59,8 @@ class P3M_tuning_test(ut.TestCase):
 
         self.add_charged_particles()
 
-        solver = espressomd.electrostatics.P3M(prefactor=2, accuracy=1e-2)
+        solver = espressomd.electrostatics.P3M(
+            prefactor=2, accuracy=1e-2, verbose=False)
         with self.assertRaisesRegex(Exception, 'python_p3m_adaptive_tune: ERROR: time_step not set'):
             self.system.actors.add(solver)
 
@@ -69,7 +71,7 @@ class P3M_tuning_test(ut.TestCase):
         self.add_magnetic_particles()
 
         solver = espressomd.magnetostatics.DipolarP3M(
-            prefactor=2, accuracy=1e-2)
+            prefactor=2, accuracy=1e-2, verbose=False)
         with self.assertRaisesRegex(Exception, 'python_dp3m_adaptive_tune: ERROR: time_step not set'):
             self.system.actors.add(solver)
 
@@ -149,7 +151,7 @@ class P3M_tuning_test(ut.TestCase):
         self.add_magnetic_particles()
 
         solver = espressomd.magnetostatics.DipolarP3M(
-            prefactor=2, accuracy=1e-2)
+            prefactor=2, accuracy=1e-2, verbose=False)
         with self.assertRaisesRegex(Exception, 'python_dp3m_adaptive_tune: ERROR: dipolar P3M requires a cubic box'):
             self.system.actors.add(solver)
 
@@ -166,7 +168,7 @@ class P3M_tuning_test(ut.TestCase):
         self.add_charged_particles()
 
         solver = espressomd.electrostatics.P3MGPU(prefactor=2, accuracy=1e-2,
-                                                  epsilon='metallic')
+                                                  epsilon='metallic', verbose=False)
         try:
             self.system.actors.add(solver)
         except Exception as err:
@@ -180,7 +182,7 @@ class P3M_tuning_test(ut.TestCase):
         self.add_charged_particles()
 
         solver = espressomd.electrostatics.P3M(prefactor=2, accuracy=1e-2,
-                                               epsilon='metallic')
+                                               epsilon='metallic', verbose=False)
         try:
             self.system.actors.add(solver)
         except Exception as err:
@@ -194,7 +196,7 @@ class P3M_tuning_test(ut.TestCase):
         self.add_magnetic_particles()
 
         solver = espressomd.magnetostatics.DipolarP3M(
-            prefactor=2, accuracy=1e-2)
+            prefactor=2, accuracy=1e-2, verbose=False)
         try:
             self.system.actors.add(solver)
         except Exception as err:
