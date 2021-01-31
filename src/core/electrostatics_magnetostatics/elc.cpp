@@ -260,14 +260,15 @@ static void add_dipole_force(const ParticleRange &particles) {
         gblcblk[2] += elc_params.delta_mid_bot * p.p.q;
       }
       if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-        gblcblk[0] += elc_params.delta_mid_top * p.p.q * (2 * elc_params.h - p.r.p[2] - shift);
+        gblcblk[0] += elc_params.delta_mid_top * p.p.q *
+                      (2 * elc_params.h - p.r.p[2] - shift);
         gblcblk[2] += elc_params.delta_mid_top * p.p.q;
       }
     }
   }
 
   gblcblk[0] *= pref;
-  gblcblk[1] *= pref;
+  gblcblk[1] *= pref * height_inverse / uz;
   gblcblk[2] *= pref;
 
   distribute(size);
@@ -277,7 +278,7 @@ static void add_dipole_force(const ParticleRange &particles) {
 
   // Const. potential contribution
   if (elc_params.const_pot) {
-    coulomb.field_induced = 0.25 * gblcblk[1] * uz;
+    coulomb.field_induced = gblcblk[1];
     coulomb.field_applied = elc_params.pot_diff * height_inverse;
     field_tot -= coulomb.field_applied + coulomb.field_induced;
   }
@@ -318,7 +319,7 @@ static double dipole_energy(const ParticleRange &particles) {
     gblcblk[0] += p.p.q;
     gblcblk[2] += p.p.q * (p.r.p[2] - shift);
     gblcblk[4] += p.p.q * (Utils::sqr(p.r.p[2] - shift));
-    gblcblk[6] += p.p.q * p.r.p[2];
+    gblcblk[6] += p.p.q * (p.r.p[2] - 0.5 * elc_params.h);
 
     if (elc_params.dielectric_contrast_on) {
       if (p.r.p[2] < elc_params.space_layer) {
