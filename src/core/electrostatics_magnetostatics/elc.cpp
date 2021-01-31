@@ -280,7 +280,7 @@ static void add_dipole_force(const ParticleRange &particles) {
   if (elc_params.const_pot) {
     coulomb.field_induced = gblcblk[1];
     coulomb.field_applied = elc_params.pot_diff * height_inverse;
-    field_tot -= coulomb.field_applied + coulomb.field_induced;
+    field_tot += coulomb.field_applied - coulomb.field_induced;
   }
 
   for (auto &p : local_particles) {
@@ -355,7 +355,7 @@ static double dipole_energy(const ParticleRange &particles) {
       // zero potential difference contribution
       energy += pref * height_inverse / uz * Utils::sqr(gblcblk[6]);
       // external potential shift contribution
-      energy -= 2 * elc_params.pot_diff * height_inverse * gblcblk[6];
+      energy += 2 * elc_params.pot_diff * height_inverse * gblcblk[6];
     }
 
     /* counter the P3M homogeneous background contribution to the
