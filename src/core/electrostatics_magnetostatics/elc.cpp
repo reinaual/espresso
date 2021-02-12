@@ -251,7 +251,7 @@ static void add_dipole_force(const ParticleRange &particles) {
     check_gap_elc(p);
 
     gblcblk[0] += p.p.q * (p.r.p[2] - shift);
-    gblcblk[1] += p.p.q * p.r.p[2];
+    gblcblk[1] += p.p.q * (p.r.p[2] - 0.5 * elc_params.h);
     gblcblk[2] += p.p.q;
 
     if (elc_params.dielectric_contrast_on) {
@@ -319,7 +319,7 @@ static double dipole_energy(const ParticleRange &particles) {
     gblcblk[0] += p.p.q;
     gblcblk[2] += p.p.q * (p.r.p[2] - shift);
     gblcblk[4] += p.p.q * (Utils::sqr(p.r.p[2] - shift));
-    gblcblk[6] += p.p.q * p.r.p[2];
+    gblcblk[6] += p.p.q * (p.r.p[2] - 0.5 * elc_params.h);
 
     if (elc_params.dielectric_contrast_on) {
       if (p.r.p[2] < elc_params.space_layer) {
