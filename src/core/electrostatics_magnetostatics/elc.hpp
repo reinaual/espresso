@@ -158,10 +158,9 @@ void ELC_P3M_restore_p3m_sums(const ParticleRange &particles);
 #endif // P3M
 
 namespace detail {
-/** mirror position at xy-plane at height @height */
-constexpr inline Utils::Vector3d
-mirror_z_position(const Utils::Vector3d &position, double height) {
-  return {position[0], position[1], 2 * height - position[2]};
+/** mirror @position at xy-plane at height @height */
+constexpr inline double mirror_position(double position, double height) {
+  return 2 * height - position;
 }
 } // namespace detail
 
