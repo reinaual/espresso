@@ -155,6 +155,6 @@ void ELC_P3M_modify_p3m_sums_image(const ParticleRange &particles);
 /// assign the additional, virtual charges, used only in energy.cpp
 void ELC_P3M_restore_p3m_sums(const ParticleRange &particles);
 
-#endif
+#endif // P3M
 
-#endif
+#endif // _ELC_H
