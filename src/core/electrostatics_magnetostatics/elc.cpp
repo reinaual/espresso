@@ -278,9 +278,7 @@ static void add_dipole_force(const ParticleRange &particles) {
 
   // Const. potential contribution
   if (elc_params.const_pot) {
-    coulomb.field_induced = gblcblk[1];
-    coulomb.field_applied = elc_params.pot_diff * height_inverse;
-    field_tot -= coulomb.field_applied + coulomb.field_induced;
+    field_tot -= elc_params.pot_diff * height_inverse + gblcblk[1];
   }
 
   for (auto &p : local_particles) {

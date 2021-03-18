@@ -49,9 +49,6 @@ struct Coulomb_parameters {
   /** Bjerrum length times temperature. */
   double prefactor = 0.;
 
-  double field_induced = 0.;
-  double field_applied = 0.;
-
   /** Method to treat %Coulomb interaction. */
   CoulombMethod method = COULOMB_NONE;
 };
