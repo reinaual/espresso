@@ -24,18 +24,18 @@
 
 #include "electrostatics_magnetostatics/elc.hpp"
 
-BOOST_AUTO_TEST_CASE(mirror_position) {
+BOOST_AUTO_TEST_CASE(mirror_z_position) {
   const Utils::Vector3d position{1, 2, 3};
-  auto const lower_mirror = detail::mirror_position(position, 0);
+  auto const lower_mirror = detail::mirror_z_position(position, 0);
   const Utils::Vector3d expected_lower{position[0], position[1], -position[2]};
   BOOST_TEST(lower_mirror == expected_lower, boost::test_tools::per_element());
 
-  auto const mirror_equal = detail::mirror_position(position, position[2]);
+  auto const mirror_equal = detail::mirror_z_position(position, position[2]);
   BOOST_TEST(mirror_equal == position, boost::test_tools::per_element());
 
   auto const upper_mirror_position = 10.;
   auto const upper_mirror =
-      detail::mirror_position(position, upper_mirror_position);
+      detail::mirror_z_position(position, upper_mirror_position);
   const Utils::Vector3d expected_upper_mirror = {
       position[0], position[1], 2 * upper_mirror_position - position[2]};
   BOOST_TEST(upper_mirror == expected_upper_mirror,
