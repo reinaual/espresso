@@ -50,6 +50,8 @@
 #include <cstddef>
 #include <vector>
 
+#include <boost/range/combine.hpp>
+
 /****************************************
  * LOCAL DEFINES
  ****************************************/
@@ -78,6 +80,17 @@ ELC_struct elc_params = {1e100, 10,    1, 0, true, true, false, 1,
  *  lower half. This has to have positive sign, so that has to be first.
  */
 /**@{*/
+enum class P_access : int { S_P, C_P, S_N, C_N };
+enum class PQ_access : int {
+  S_S_P,
+  S_C_P,
+  C_S_P,
+  C_C_P,
+  S_S_N,
+  S_C_N,
+  C_S_N,
+  C_C_N
+};
 #define POQESP 0
 #define POQECP 1
 #define POQESM 2
@@ -531,9 +544,48 @@ static void add_z_force(const ParticleRange &particles) {
 
 /** \name q=0 or p=0 per frequency code */
 /**@{*/
+Utils::Vector4d setup_PoQ(std::size_t index, double omega,
+                          const ParticleRange &particles,
+                          std::vector<Utils::Vector4d> &partblk,
+                          const std::vector<SCCache> &sc_cache) {
+  assert(index >= 1);
+  double const pref = -coulomb.prefactor * 4 * Utils::pi() * ux * uy /
+                      expm1(omega * box_geo.length()[2]);
+
+  Utils::Vector4d global_partblk{};
+
+  auto const p_size = particles.size();
+
+  auto const local_sc_cache =
+      Utils::make_const_span(&sc_cache[(index - 1) * p_size], p_size);
+
+  for (boost::tuple<const Particle &, Utils::Vector4d &, const SCCache &>
+           zipped : boost::combine(particles, partblk, local_sc_cache)) {
+    auto const &p = zipped.get<0>();
+    auto &local_partblk = zipped.get<1>();
+    auto const &sc_value = zipped.get<2>();
+
+    auto const exp_factor = exp(omega * p.r.p[2]);
+    auto const exp_factor_inv = 1. / exp_factor;
+    auto const charge = p.p.q;
+
+    local_partblk = charge * Utils::Vector4d{sc_value.s * exp_factor,
+                                             sc_value.c * exp_factor,
+                                             sc_value.s * exp_factor_inv,
+                                             sc_value.c * exp_factor_inv};
+
+    global_partblk += local_partblk;
+  }
+
+  global_partblk *= pref;
+
+  return boost::mpi::all_reduce(comm_cart, global_partblk,
+                                std::plus<Utils::Vector4d>());
+}
+
 template <PoQ axis>
-void setup_PoQ(std::size_t index, double omega,
-               const ParticleRange &particles) {
+void setup_PoQ_old(std::size_t index, double omega,
+                   const ParticleRange &particles) {
   assert(index >= 1);
   double const pref_di = coulomb.prefactor * 4 * Utils::pi() * ux * uy;
   double const pref = -pref_di / expm1(omega * box_geo.length()[2]);
@@ -639,21 +691,25 @@ void setup_PoQ(std::size_t index, double omega,
   }
 }
 
-template <PoQ axis> void add_PoQ_force(const ParticleRange &particles) {
-  constexpr auto i = static_cast<int>(axis);
+template <int axis>
+void add_PoQ_force(const ParticleRange &particles,
+                   const std::vector<Utils::Vector4d> &partblk,
+                   const Utils::Vector4d &gblblk) {
   constexpr std::size_t size = 4;
 
-  std::size_t ic = 0;
-  for (auto &p : particles) {
-    p.f.f[i] += partblk[size * ic + POQESM] * gblcblk[POQECP] -
-                partblk[size * ic + POQECM] * gblcblk[POQESP] +
-                partblk[size * ic + POQESP] * gblcblk[POQECM] -
-                partblk[size * ic + POQECP] * gblcblk[POQESM];
-    p.f.f[2] += partblk[size * ic + POQECM] * gblcblk[POQECP] +
-                partblk[size * ic + POQESM] * gblcblk[POQESP] -
-                partblk[size * ic + POQECP] * gblcblk[POQECM] -
-                partblk[size * ic + POQESP] * gblcblk[POQESM];
-    ic++;
+  for (boost::tuple<Particle &, const Utils::Vector4d &> zipped :
+       boost::combine(particles, partblk)) {
+    auto &p = zipped.get<0>();
+    auto const &local_partblk = zipped.get<1>();
+
+    p.f.f[axis] += local_partblk[static_cast<int>(P_access::S_P)] * gblcblk[P_access::C_N] -
+                   local_partblk[P_access::C_P] * gblcblk[P_access::S_N] +
+                   local_partblk[P_access::S_N] * gblcblk[P_access::C_P] -
+                   local_partblk[P_access::C_N] * gblcblk[P_access::S_P];
+    p.f.f[2] += local_partblk[P_access::C_N] * gblcblk[P_access::C_P] +
+                local_partblk[P_access::S_N] * gblcblk[P_access::S_P] -
+                local_partblk[P_access::C_P] * gblcblk[P_access::C_N] -
+                local_partblk[P_access::S_P] * gblcblk[P_access::S_N];
   }
 }
 
@@ -883,14 +939,12 @@ void ELC_add_force(const ParticleRange &particles) {
     add_dipole_force<false>(particles);
   }
 
-  /* the second condition is just for the case of numerical accident */
-  for (std::size_t p = 1;
-       ux * static_cast<double>(p - 1) < elc_params.far_cut && p <= n_scxcache;
-       p++) {
+  std::vector<Utils::Vector4d> partblk(particles.size());
+  for (std::size_t p = 1; p <= n_scxcache; p++) {
     auto const omega = c_2pi * ux * static_cast<double>(p);
-    setup_PoQ<PoQ::P>(p, omega, particles);
-    distribute(4);
-    add_PoQ_force<PoQ::P>(particles);
+    auto const global_partblk =
+        setup_PoQ(p, omega, particles, partblk, scxcache);
+    add_PoQ_force<0>(particles, partblk, global_partblk);
   }
 
   for (std::size_t q = 1;
