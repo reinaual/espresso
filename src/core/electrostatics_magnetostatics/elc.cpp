@@ -477,53 +477,51 @@ static double z_energy(const ParticleRange &particles) {
 
 /*****************************************************************/
 static void add_z_force(const ParticleRange &particles) {
-  double const pref = coulomb.prefactor * 2 * Utils::pi() * ux * uy;
-  constexpr std::size_t size = 1;
+  auto local_particles = particles;
 
-  if (elc_params.dielectric_contrast_on) {
-    auto local_particles = particles;
-    if (elc_params.const_pot) {
-      clear_vec(gblcblk, size);
-      /* just counter the 2 pi |z| contribution stemming from P3M */
-      for (auto &p : local_particles) {
-        if (p.r.p[2] < elc_params.space_layer)
-          gblcblk[0] -= elc_params.delta_mid_bot * p.p.q;
-        if (p.r.p[2] > (elc_params.h - elc_params.space_layer))
-          gblcblk[0] += elc_params.delta_mid_top * p.p.q;
-      }
-    } else {
-      double const delta = elc_params.delta_mid_top * elc_params.delta_mid_bot;
-      double const fac_delta_mid_bot = elc_params.delta_mid_bot / (1 - delta);
-      double const fac_delta_mid_top = elc_params.delta_mid_top / (1 - delta);
-      double const fac_delta = delta / (1 - delta);
+  double total_charge = 0.;
 
-      clear_vec(gblcblk, size);
-      for (auto &p : local_particles) {
-        if (p.r.p[2] < elc_params.space_layer) {
-          gblcblk[0] += fac_delta * (elc_params.delta_mid_bot + 1) * p.p.q;
-        } else {
-          gblcblk[0] +=
-              fac_delta_mid_bot * (1 + elc_params.delta_mid_top) * p.p.q;
-        }
-
-        if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-          // note the minus sign here which is required due to |z_i-z_j|
-          gblcblk[0] -= fac_delta * (elc_params.delta_mid_top + 1) * p.p.q;
-        } else {
-          // note the minus sign here which is required due to |z_i-z_j|
-          gblcblk[0] -=
-              fac_delta_mid_top * (1 + elc_params.delta_mid_bot) * p.p.q;
-        }
+  if (elc_params.const_pot) {
+    /* just counter the 2 pi |z| contribution stemming from P3M */
+    for (auto &p : local_particles) {
+      auto const z_pos = p.r.p[2];
+      if (z_pos < elc_params.space_layer) {
+        total_charge -= elc_params.delta_mid_bot * p.p.q;
+      } else if (z_pos > (elc_params.h - elc_params.space_layer)) {
+        total_charge += elc_params.delta_mid_top * p.p.q;
       }
     }
-
-    gblcblk[0] *= pref;
-
-    distribute(size);
+  } else {
+    double const delta = elc_params.delta_mid_top * elc_params.delta_mid_bot;
+    double const fac_delta_mid_bot = elc_params.delta_mid_bot / (1 - delta);
+    double const fac_delta_mid_top = elc_params.delta_mid_top / (1 - delta);
+    double const fac_delta = delta / (1 - delta);
 
     for (auto &p : local_particles) {
-      p.f.f[2] += gblcblk[0] * p.p.q;
+      auto const z_pos = p.r.p[2];
+      if (z_pos < elc_params.space_layer) {
+        total_charge += fac_delta * (elc_params.delta_mid_bot + 1) * p.p.q;
+      } else {
+        total_charge +=
+            fac_delta_mid_bot * (1 + elc_params.delta_mid_top) * p.p.q;
+      }
+
+      if (z_pos > (elc_params.h - elc_params.space_layer)) {
+        total_charge -= fac_delta * (elc_params.delta_mid_top + 1) * p.p.q;
+      } else {
+        total_charge -=
+            fac_delta_mid_top * (1 + elc_params.delta_mid_bot) * p.p.q;
+      }
     }
+  }
+
+  total_charge *= coulomb.prefactor * 2 * Utils::pi() * ux * uy;
+
+  auto const force_factor =
+      boost::mpi::all_reduce(comm_cart, total_charge, std::plus<double>());
+
+  for (auto &p : local_particles) {
+    p.f.f[2] += force_factor * p.p.q;
   }
 }
 
