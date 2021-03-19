@@ -231,8 +231,9 @@ inline void check_gap_elc(const Particle &p) {
 /** Calculate the dipole force.
  *  See @cite yeh99a.
  */
+template <bool dielectric_contrast>
 static void add_dipole_force(const ParticleRange &particles) {
-  double const pref = coulomb.prefactor * 4 * Utils::pi() * ux * uy * uz;
+  double const pref = coulomb.prefactor * 4 * Utils::pi() * ux * uy;
   constexpr std::size_t size = 3;
 
   auto local_particles = particles;
@@ -241,44 +242,53 @@ static void add_dipole_force(const ParticleRange &particles) {
      (rsp. for this shift, the DM of the background is zero) */
   double const shift = 0.5 * box_geo.length()[2];
 
-  // collect moments
+  /*
+   * collect charge moments
+   * [0]: sum q_i
+   * [1]: sum q_i z_i
+   * [2]: sum q_i (z_i - L/2)
+   */
+  Utils::Vector3d moments{};
 
-  gblcblk[0] = 0; // sum q_i (z_i - L/2)
-  gblcblk[1] = 0; // sum q_i z_i
-  gblcblk[2] = 0; // sum q_i
+  using detail::mirror_position;
 
   for (auto const &p : local_particles) {
     check_gap_elc(p);
 
-    gblcblk[0] += p.p.q * (p.r.p[2] - shift);
-    gblcblk[1] += p.p.q * p.r.p[2];
-    gblcblk[2] += p.p.q;
+    moments[0] += p.p.q;
+    moments[1] += p.p.q * p.r.p[2];
+    moments[2] += p.p.q * (p.r.p[2] - shift);
 
-    if (elc_params.dielectric_contrast_on) {
-      if (p.r.p[2] < elc_params.space_layer) {
-        gblcblk[0] += elc_params.delta_mid_bot * p.p.q * (-p.r.p[2] - shift);
-        gblcblk[2] += elc_params.delta_mid_bot * p.p.q;
-      }
-      if (p.r.p[2] > (elc_params.h - elc_params.space_layer)) {
-        gblcblk[0] += elc_params.delta_mid_top * p.p.q *
-                      (2 * elc_params.h - p.r.p[2] - shift);
-        gblcblk[2] += elc_params.delta_mid_top * p.p.q;
+    if (dielectric_contrast) {
+      auto const z_pos = p.r.p[2];
+      if (z_pos < elc_params.space_layer) {
+        const auto eff_charge = elc_params.delta_mid_bot * p.p.q;
+
+        moments[0] += eff_charge;
+        moments[2] += eff_charge * (mirror_position(z_pos, 0) - shift);
+      } else if (z_pos > (elc_params.h - elc_params.space_layer)) {
+        const auto eff_charge = elc_params.delta_mid_top * p.p.q;
+
+        moments[0] += eff_charge;
+        moments[2] +=
+            eff_charge * (mirror_position(z_pos, elc_params.h) - shift);
       }
     }
   }
 
-  gblcblk[0] *= pref;
-  gblcblk[1] *= pref * height_inverse / uz;
-  gblcblk[2] *= pref;
+  moments[0] *= pref * uz;
+  moments[1] *= pref * height_inverse;
+  moments[2] *= pref * uz;
 
-  distribute(size);
+  boost::mpi::all_reduce(comm_cart, boost::mpi::inplace(moments),
+                         std::plus<Utils::Vector3d>());
 
   // Yeh + Berkowitz dipole term @cite yeh99a
-  double field_tot = gblcblk[0];
+  double field_tot = moments[2];
 
   // Const. potential contribution
   if (elc_params.const_pot) {
-    field_tot -= elc_params.pot_diff * height_inverse + gblcblk[1];
+    field_tot -= elc_params.pot_diff * height_inverse + moments[1];
   }
 
   for (auto &p : local_particles) {
@@ -286,7 +296,7 @@ static void add_dipole_force(const ParticleRange &particles) {
 
     if (!elc_params.neutralize) {
       // SUBTRACT the forces of the P3M homogeneous neutralizing background
-      p.f.f[2] += gblcblk[2] * p.p.q * (p.r.p[2] - shift);
+      p.f.f[2] += moments[0] * p.p.q * (p.r.p[2] - shift);
     }
   }
 }
