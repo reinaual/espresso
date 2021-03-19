@@ -878,8 +878,12 @@ void ELC_add_force(const ParticleRange &particles) {
   prepare_sc_cache(particles, n_scxcache, ux, n_scycache, uy);
   partblk.resize(particles.size() * 8);
 
-  add_dipole_force(particles);
-  add_z_force(particles);
+  if (elc_params.dielectric_contrast_on) {
+    add_dipole_force<true>(particles);
+    add_z_force(particles);
+  } else {
+    add_dipole_force<false>(particles);
+  }
 
   /* the second condition is just for the case of numerical accident */
   for (std::size_t p = 1;
