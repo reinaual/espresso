@@ -76,10 +76,12 @@ public:
            boost::none;
   };
   [[nodiscard]] bool pos_in_local_domain(const Utils::Vector3d &pos) const {
-    return get_block(pos, false, m_blocks, get_ghost_layers()) != nullptr;
+    return ::walberla::get_block(pos, false, m_blocks, get_ghost_layers()) !=
+           nullptr;
   };
   [[nodiscard]] bool pos_in_local_halo(const Utils::Vector3d &pos) const {
-    return get_block(pos, true, m_blocks, get_ghost_layers()) != nullptr;
+    return ::walberla::get_block(pos, true, m_blocks, get_ghost_layers()) !=
+           nullptr;
   };
 };
 } // namespace walberla
