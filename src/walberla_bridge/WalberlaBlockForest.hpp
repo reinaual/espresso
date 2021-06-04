@@ -55,7 +55,7 @@ public:
 
   // Grid, domain, halo
   [[nodiscard]] int n_ghost_layers() const { return m_n_ghost_layers; };
-  [[nodiscard]] Utils::Vector3i get_grid_dimensions() const override {
+  [[nodiscard]] Utils::Vector3i get_grid_dimensions() const {
     return m_grid_dimensions;
   }
   [[nodiscard]] std::pair<Utils::Vector3d, Utils::Vector3d>
