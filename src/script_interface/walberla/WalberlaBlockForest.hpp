@@ -8,6 +8,8 @@
 #include "script_interface/auto_parameters/AutoParameters.hpp"
 #include "utils/Vector.hpp"
 
+#include <cmath>
+
 namespace ScriptInterface::walberla {
 
 class WalberlaBlockForest : public AutoParameters<WalberlaBlockForest> {
@@ -35,7 +37,7 @@ public:
         static_cast<int>(std::round(box_size[1] / agrid)),
         static_cast<int>(std::round(box_size[2] / agrid))};
     for (int i : {0, 1, 2}) {
-      if (fabs(grid_dimensions[i] * agrid - box_size[i]) / box_size[i] >
+      if (std::abs(grid_dimensions[i] * agrid - box_size[i]) / box_size[i] >
           std::numeric_limits<double>::epsilon()) {
         throw std::runtime_error(
             "Box length not commensurate with agrid in direction " +
