@@ -20,9 +20,6 @@ protected:
   /** Block forest */
   std::shared_ptr<blockforest::StructuredBlockForest> m_blocks;
 
-  /** MPI */
-  std::shared_ptr<mpi::Environment> m_env;
-
 public:
   WalberlaBlockForest(const Utils::Vector3i &grid_dimensions,
                       const Utils::Vector3i &node_grid, int n_ghost_layers)
