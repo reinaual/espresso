@@ -53,6 +53,9 @@ public:
         true, true, true);
   };
 
+  [[nodiscard]] auto get_grid_dimensions() const { return m_grid_dimensions; };
+  [[nodiscard]] auto get_ghost_layers() const { return m_n_ghost_layers; };
+
   // Grid, domain, halo
   [[nodiscard]] int n_ghost_layers() const { return m_n_ghost_layers; };
   [[nodiscard]] Utils::Vector3i get_grid_dimensions() const {
