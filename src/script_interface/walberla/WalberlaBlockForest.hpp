@@ -6,6 +6,7 @@
 #include "grid.hpp"
 #include "script_interface/ScriptInterface.hpp"
 #include "script_interface/auto_parameters/AutoParameters.hpp"
+#include "utils/Vector.hpp"
 
 namespace ScriptInterface::walberla {
 
@@ -14,7 +15,12 @@ private:
   std::shared_ptr<::walberla::WalberlaBlockForest> m_blockforest;
 
 public:
-  WalberlaBlockForest() = default;
+  WalberlaBlockForest() {
+    add_parameters({{"grid_dimensions", AutoParameter::read_only,
+                     [this]() { return m_blockforest->get_grid_dimensions(); }},
+                    {"ghost_layers", AutoParameter::read_only,
+                     [this]() { return m_blockforest->get_ghost_layers(); }}});
+  };
 
   void do_construct(VariantMap const &args) override {
     const auto agrid = get_value<double>(args, "agrid");
