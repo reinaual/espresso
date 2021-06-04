@@ -65,6 +65,7 @@
 
 #include "LBWalberlaBase.hpp"
 #include "ResetForce.hpp"
+#include "WalberlaBlockForest.hpp"
 #include "walberla_utils.hpp"
 
 #include <utils/Vector.hpp>
@@ -141,7 +142,7 @@ protected:
   std::shared_ptr<PDFStreamingCommunicator> m_pdf_streaming_communication;
 
   /** Block forest */
-  std::shared_ptr<blockforest::StructuredBlockForest> m_blocks;
+  std::shared_ptr<WalberlaBlockForest> m_blocks;
 
   std::shared_ptr<timeloop::SweepTimeloop> m_time_loop;
 
@@ -185,35 +186,9 @@ protected:
   };
 
 public:
-  LBWalberlaImpl(double viscosity, const Utils::Vector3i &grid_dimensions,
-                 const Utils::Vector3i &node_grid, int n_ghost_layers) {
-    m_grid_dimensions = grid_dimensions;
-    m_n_ghost_layers = n_ghost_layers;
-
-    if (m_n_ghost_layers <= 0)
-      throw std::runtime_error("At least one ghost layer must be used");
-    for (int i : {0, 1, 2}) {
-      if (m_grid_dimensions[i] % node_grid[i] != 0) {
-        throw std::runtime_error(
-            "LB grid dimensions and mpi node grid are not compatible.");
-      }
-    }
-
-    m_blocks = blockforest::createUniformBlockGrid(
-        uint_c(node_grid[0]), // blocks in x direction
-        uint_c(node_grid[1]), // blocks in y direction
-        uint_c(node_grid[2]), // blocks in z direction
-        uint_c(m_grid_dimensions[0] /
-               node_grid[0]), // number of cells per block in x direction
-        uint_c(m_grid_dimensions[1] /
-               node_grid[1]), // number of cells per block in y direction
-        uint_c(m_grid_dimensions[2] /
-               node_grid[2]), // number of cells per block in z direction
-        1,                    // Lattice constant
-        uint_c(node_grid[0]), uint_c(node_grid[1]),
-        uint_c(node_grid[2]), // cpus per direction
-        true, true, true);
-
+  LBWalberlaImpl(double viscosity,
+                 std::shared_ptr<WalberlaBlockForest> blockforest)
+      : m_blocks(std::move(blockforest)) {
     // Init and register force fields
     m_last_applied_force_field_id = field::addToStorage<VectorField>(
         m_blocks, "force field", FloatType{0}, field::fzyx, m_n_ghost_layers);
