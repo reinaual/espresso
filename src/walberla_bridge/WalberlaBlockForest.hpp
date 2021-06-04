@@ -14,7 +14,7 @@ namespace walberla {
 
 /** Class that runs and controls the BlockForest in walberla
  */
-template <typename FloatType = double> class WalberlaBlockForest {
+class WalberlaBlockForest {
 protected:
   /** Member variables */
   Utils::Vector3i m_grid_dimensions;
