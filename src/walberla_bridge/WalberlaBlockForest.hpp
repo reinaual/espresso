@@ -56,6 +56,7 @@ public:
   // Grid, domain, halo
   [[nodiscard]] auto get_ghost_layers() const { return m_n_ghost_layers; };
   [[nodiscard]] auto get_grid_dimensions() const { return m_grid_dimensions; }
+  [[nodiscard]] auto get_block() const { return m_blocks; }
   [[nodiscard]] std::pair<Utils::Vector3d, Utils::Vector3d>
   get_local_domain() const {
     // We only have one block per mpi rank
