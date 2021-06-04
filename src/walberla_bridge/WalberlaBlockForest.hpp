@@ -5,6 +5,9 @@
 #ifndef ESPRESSO_WALBERLABLOCKFOREST_HPP
 #define ESPRESSO_WALBERLABLOCKFOREST_HPP
 
+#include "blockforest/Initialization.h"
+#include "blockforest/StructuredBlockForest.h"
+
 #include "walberla_utils.hpp"
 
 namespace walberla {
