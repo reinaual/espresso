@@ -1,4 +1,5 @@
 #include "LBWalberlaImpl.hpp"
+#include "WalberlaBlockForest.hpp"
 #include "relaxation_rates.hpp"
 #ifdef __AVX2__
 #include "generated_kernels/MRTLatticeModelAvx.h"
@@ -38,9 +39,8 @@ public:
     return viscosity_from_shear_relaxation_rate(lm->omega_shear_);
   };
   LBWalberlaD3Q19MRT(double viscosity, double density,
-                     const Utils::Vector3i &grid_dimensions,
-                     const Utils::Vector3i &node_grid, int n_ghost_layers)
-      : LBWalberlaImpl(viscosity, grid_dimensions, node_grid, n_ghost_layers) {
+                     std::shared_ptr<WalberlaBlockForest> blockforest)
+      : LBWalberlaImpl(viscosity, std::move(blockforest)) {
     construct_lattice_model(viscosity);
     setup_with_valid_lattice_model(density);
   };
