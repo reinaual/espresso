@@ -27,14 +27,10 @@ public:
   void do_construct(VariantMap const &args) override {
     const auto agrid = get_value<double>(args, "agrid");
     const auto box_size = box_geo.length();
-    const auto ghost_layers = get_value<int>(args, "ghost_layers")
 
-        if (agrid <= 0) {
+    if (agrid <= 0) {
       throw std::domain_error("agrid has to be >=0!");
     }
-
-    if (ghost_layers < 1)
-      throw std::runtime_error("At least one ghost layer must be used");
 
     const Utils::Vector3i grid_dimensions{
         static_cast<int>(std::round(box_size[0] / agrid)),
@@ -50,7 +46,7 @@ public:
       }
     }
     m_blockforest = std::make_shared<::walberla::WalberlaBlockForest>(
-        grid_dimensions, node_grid, ghost_layers);
+        grid_dimensions, node_grid, get_value<int>(args, "ghost_layers"));
   }
 };
 
