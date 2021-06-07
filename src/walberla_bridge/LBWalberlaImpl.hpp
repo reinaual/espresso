@@ -117,10 +117,6 @@ protected:
   /** VTK writers that are executed manually */
   std::map<std::string, std::shared_ptr<vtk::VTKOutput>> m_vtk_manual;
 
-  // Member variables
-  Utils::Vector3i m_grid_dimensions;
-  int m_n_ghost_layers;
-
   // Block data access handles
   BlockDataID m_pdf_field_id;
   BlockDataID m_flag_field_id;
@@ -186,31 +182,29 @@ protected:
 
 public:
   LBWalberlaImpl(std::shared_ptr<WalberlaBlockForest> blockforest,
-                 double viscosity, int n_ghost_layers)
-      : m_n_ghost_layers{n_ghost_layers}, m_blockforest{
-                                              std::move(blockforest)} {
-    if (m_n_ghost_layers <= 0)
-      throw std::runtime_error("At least one ghost layer must be used");
+                 double viscosity)
+      : m_blockforest{std::move(blockforest)} {
 
     // Init and register force fields
     m_last_applied_force_field_id = field::addToStorage<VectorField>(
         m_blockforest->get_blocks(), "force field", FloatType{0}, field::fzyx,
-        m_n_ghost_layers);
+        m_blockforest->get_ghost_layers());
     m_force_to_be_applied_id = field::addToStorage<VectorField>(
         m_blockforest->get_blocks(), "force field", FloatType{0}, field::fzyx,
-        m_n_ghost_layers);
+        m_blockforest->get_ghost_layers());
 
     // Init and register flag field (fluid/boundary)
     m_flag_field_id = field::addFlagFieldToStorage<FlagField>(
-        m_blockforest->get_blocks(), "flag field", m_n_ghost_layers);
+        m_blockforest->get_blocks(), "flag field",
+        m_blockforest->get_ghost_layers());
   };
 
   void setup_with_valid_lattice_model(double density) {
     // Init and register pdf field
     m_pdf_field_id = lbm::addPdfFieldToStorage(
         m_blockforest->get_blocks(), "pdf field", *(m_lattice_model.get()),
-        to_vector3(Utils::Vector3d{}), FloatType(density), m_n_ghost_layers,
-        field::fzyx);
+        to_vector3(Utils::Vector3d{}), FloatType(density),
+        m_blockforest->get_ghost_layers(), field::fzyx);
 
     // Register boundary handling
     m_boundary_handling_id =
@@ -300,6 +294,10 @@ public:
 
   void ghost_communication() override { (*m_full_communication)(); }
 
+  std::shared_ptr<WalberlaBlockForest> get_blockforest() const override {
+    return m_blockforest;
+  };
+
   // Velocity
   boost::optional<Utils::Vector3d>
   get_node_velocity(const Utils::Vector3i &node,
@@ -309,8 +307,9 @@ public:
     if (is_boundary)    // is info available locally
       if (*is_boundary) // is the node a boundary
         return get_node_velocity_at_boundary(node);
-    auto const bc = get_block_and_cell(
-        node, consider_ghosts, m_blockforest->get_blocks(), n_ghost_layers());
+    auto const bc =
+        get_block_and_cell(node, consider_ghosts, m_blockforest->get_blocks(),
+                           m_blockforest->get_ghost_layers());
     if (!bc)
       return {};
     auto const &vel_adaptor =
@@ -320,7 +319,7 @@ public:
   bool set_node_velocity(const Utils::Vector3i &node,
                          const Utils::Vector3d &v) override {
     auto bc = get_block_and_cell(node, false, m_blockforest->get_blocks(),
-                                 n_ghost_layers());
+                                 m_blockforest->get_ghost_layers());
     if (!bc)
       return false;
     auto pdf_field = (*bc).block->template getData<PdfField>(m_pdf_field_id);
@@ -335,9 +334,9 @@ public:
   boost::optional<Utils::Vector3d>
   get_velocity_at_pos(const Utils::Vector3d &pos,
                       bool consider_points_in_halo = false) const override {
-    if (!consider_points_in_halo and !pos_in_local_domain(pos))
+    if (!consider_points_in_halo and !m_blockforest->pos_in_local_domain(pos))
       return {};
-    if (consider_points_in_halo and !pos_in_local_halo(pos))
+    if (consider_points_in_halo and !m_blockforest->pos_in_local_halo(pos))
       return {};
     Utils::Vector3d v{0.0, 0.0, 0.0};
     interpolate_bspline_at_pos(
@@ -361,9 +360,9 @@ public:
   boost::optional<double> get_interpolated_density_at_pos(
       const Utils::Vector3d &pos,
       bool consider_points_in_halo = false) const override {
-    if (!consider_points_in_halo and !pos_in_local_domain(pos))
+    if (!consider_points_in_halo and !m_blockforest->pos_in_local_domain(pos))
       return {};
-    if (consider_points_in_halo and !pos_in_local_halo(pos))
+    if (consider_points_in_halo and !m_blockforest->pos_in_local_halo(pos))
       return {};
     double dens = 0.0;
     interpolate_bspline_at_pos(
@@ -387,13 +386,13 @@ public:
   // Local force
   bool add_force_at_pos(const Utils::Vector3d &pos,
                         const Utils::Vector3d &force) override {
-    if (!pos_in_local_halo(pos))
+    if (!m_blockforest->pos_in_local_halo(pos))
       return false;
     auto force_at_node = [this, force](const std::array<int, 3> node,
                                        double weight) {
-      auto const bc =
-          get_block_and_cell(to_vector3i(node), true,
-                             m_blockforest->get_blocks(), n_ghost_layers());
+      auto const bc = get_block_and_cell(to_vector3i(node), true,
+                                         m_blockforest->get_blocks(),
+                                         m_blockforest->get_ghost_layers());
       if (bc) {
         auto force_field = (*bc).block->template getData<VectorField>(
             m_force_to_be_applied_id);
@@ -408,7 +407,7 @@ public:
   boost::optional<Utils::Vector3d>
   get_node_force_to_be_applied(const Utils::Vector3i &node) const override {
     auto const bc = get_block_and_cell(node, true, m_blockforest->get_blocks(),
-                                       n_ghost_layers());
+                                       m_blockforest->get_ghost_layers());
     if (!bc)
       return {};
 
@@ -422,7 +421,7 @@ public:
   bool set_node_last_applied_force(Utils::Vector3i const &node,
                                    Utils::Vector3d const &force) override {
     auto bc = get_block_and_cell(node, false, m_blockforest->get_blocks(),
-                                 n_ghost_layers());
+                                 m_blockforest->get_ghost_layers());
     if (!bc)
       return false;
 
@@ -438,8 +437,9 @@ public:
   boost::optional<Utils::Vector3d>
   get_node_last_applied_force(const Utils::Vector3i &node,
                               bool consider_ghosts = false) const override {
-    auto const bc = get_block_and_cell(
-        node, consider_ghosts, m_blockforest->get_blocks(), n_ghost_layers());
+    auto const bc =
+        get_block_and_cell(node, consider_ghosts, m_blockforest->get_blocks(),
+                           m_blockforest->get_ghost_layers());
     if (!bc)
       return {};
 
@@ -455,7 +455,7 @@ public:
   bool set_node_pop(const Utils::Vector3i &node,
                     std::vector<double> const &population) override {
     auto bc = get_block_and_cell(node, false, m_blockforest->get_blocks(),
-                                 n_ghost_layers());
+                                 m_blockforest->get_ghost_layers());
     if (!bc)
       return false;
 
@@ -472,7 +472,7 @@ public:
   boost::optional<std::vector<double>>
   get_node_pop(const Utils::Vector3i &node) const override {
     auto bc = get_block_and_cell(node, false, m_blockforest->get_blocks(),
-                                 n_ghost_layers());
+                                 m_blockforest->get_ghost_layers());
     if (!bc)
       return {boost::none};
 
@@ -489,7 +489,7 @@ public:
   // Density
   bool set_node_density(const Utils::Vector3i &node, double density) override {
     auto bc = get_block_and_cell(node, false, m_blockforest->get_blocks(),
-                                 n_ghost_layers());
+                                 m_blockforest->get_ghost_layers());
     if (!bc)
       return false;
 
@@ -506,7 +506,7 @@ public:
   boost::optional<double>
   get_node_density(const Utils::Vector3i &node) const override {
     auto bc = get_block_and_cell(node, false, m_blockforest->get_blocks(),
-                                 n_ghost_layers());
+                                 m_blockforest->get_ghost_layers());
     if (!bc)
       return {boost::none};
 
@@ -519,7 +519,7 @@ public:
   boost::optional<Utils::Vector3d>
   get_node_velocity_at_boundary(const Utils::Vector3i &node) const override {
     auto bc = get_block_and_cell(node, true, m_blockforest->get_blocks(),
-                                 n_ghost_layers());
+                                 m_blockforest->get_ghost_layers());
     if (!bc)
       return {boost::none};
     const Boundaries *boundary_handling =
@@ -536,7 +536,7 @@ public:
   bool set_node_velocity_at_boundary(const Utils::Vector3i &node,
                                      const Utils::Vector3d &v) override {
     auto bc = get_block_and_cell(node, true, m_blockforest->get_blocks(),
-                                 n_ghost_layers());
+                                 m_blockforest->get_ghost_layers());
     if (!bc)
       return false;
 
@@ -551,8 +551,9 @@ public:
   };
   boost::optional<Utils::Vector3d>
   get_node_boundary_force(const Utils::Vector3i &node) const override {
-    auto bc = get_block_and_cell(node, true, m_blockforest->get_blocks(),
-                                 n_ghost_layers()); // including ghosts
+    auto bc = get_block_and_cell(
+        node, true, m_blockforest->get_blocks(),
+        m_blockforest->get_ghost_layers()); // including ghosts
     if (!bc)
       return {boost::none};
     // Get boundary handling
@@ -573,7 +574,7 @@ public:
   };
   bool remove_node_from_boundary(const Utils::Vector3i &node) override {
     auto bc = get_block_and_cell(node, true, m_blockforest->get_blocks(),
-                                 n_ghost_layers());
+                                 m_blockforest->get_ghost_layers());
     if (!bc)
       return false;
     auto *boundary_handling =
@@ -585,8 +586,9 @@ public:
   boost::optional<bool>
   get_node_is_boundary(const Utils::Vector3i &node,
                        bool consider_ghosts = false) const override {
-    auto bc = get_block_and_cell(node, consider_ghosts,
-                                 m_blockforest->get_blocks(), n_ghost_layers());
+    auto bc =
+        get_block_and_cell(node, consider_ghosts, m_blockforest->get_blocks(),
+                           m_blockforest->get_ghost_layers());
     if (!bc)
       return {boost::none};
 
@@ -598,7 +600,7 @@ public:
     const CellInterval &domain_bb_in_global_cell_coordinates =
         m_blockforest->get_blocks()->getCellBBFromAABB(
             m_blockforest->get_blocks()->begin()->getAABB().getExtended(
-                FloatType(n_ghost_layers())));
+                FloatType(m_blockforest->get_ghost_layers())));
     for (auto block = m_blockforest->get_blocks()->begin();
          block != m_blockforest->get_blocks()->end(); ++block) {
 
@@ -617,7 +619,7 @@ public:
   boost::optional<Utils::Vector6d>
   get_node_pressure_tensor(const Utils::Vector3i &node) const override {
     auto bc = get_block_and_cell(node, false, m_blockforest->get_blocks(),
-                                 n_ghost_layers());
+                                 m_blockforest->get_ghost_layers());
     if (!bc)
       return {boost::none};
     auto pdf_field = (*bc).block->template getData<PdfField>(m_pdf_field_id);
@@ -657,43 +659,12 @@ public:
   };
 
   // Grid, domain, halo
-  int n_ghost_layers() const override { return m_n_ghost_layers; };
-  Utils::Vector3i get_grid_dimensions() const override {
-    return m_grid_dimensions;
-  }
-  std::pair<Utils::Vector3d, Utils::Vector3d>
-  get_local_domain() const override {
-    // We only have one block per mpi rank
-    assert(++(m_blockforest->get_blocks()->begin()) ==
-           m_blockforest->get_blocks()->end());
-
-    auto const ab = m_blockforest->get_blocks()->begin()->getAABB();
-    return {to_vector3d(ab.min()), to_vector3d(ab.max())};
-  };
-
-  bool node_in_local_domain(const Utils::Vector3i &node) const override {
-    // Note: Lattice constant =1, cell centers offset by .5
-    return get_block_and_cell(node, false, m_blockforest->get_blocks(),
-                              n_ghost_layers()) != boost::none;
-  };
-  bool node_in_local_halo(const Utils::Vector3i &node) const override {
-    return get_block_and_cell(node, true, m_blockforest->get_blocks(),
-                              n_ghost_layers()) != boost::none;
-  };
-  bool pos_in_local_domain(const Utils::Vector3d &pos) const override {
-    return get_block(pos, false, m_blockforest->get_blocks(),
-                     n_ghost_layers()) != nullptr;
-  };
-  bool pos_in_local_halo(const Utils::Vector3d &pos) const override {
-    return get_block(pos, true, m_blockforest->get_blocks(),
-                     n_ghost_layers()) != nullptr;
-  };
 
   std::vector<std::pair<Utils::Vector3i, Utils::Vector3d>>
   node_indices_positions(bool include_ghosts = false) const override {
     int ghost_offset = 0;
     if (include_ghosts)
-      ghost_offset = m_n_ghost_layers;
+      ghost_offset = m_blockforest->get_ghost_layers();
     std::vector<std::pair<Utils::Vector3i, Utils::Vector3d>> res;
     for (auto block = m_blockforest->get_blocks()->begin();
          block != m_blockforest->get_blocks()->end(); ++block) {

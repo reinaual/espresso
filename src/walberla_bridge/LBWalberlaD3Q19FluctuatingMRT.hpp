@@ -40,12 +40,10 @@ public:
     auto *lm = dynamic_cast<LatticeModel *>(m_lattice_model.get());
     return viscosity_from_shear_relaxation_rate(lm->omega_shear_);
   };
-  LBWalberlaD3Q19FluctuatingMRT(double viscosity, double density,
-                                const Utils::Vector3i &grid_dimensions,
-                                const Utils::Vector3i &node_grid,
-                                int n_ghost_layers, double kT,
-                                unsigned int seed)
-      : LBWalberlaImpl(viscosity, grid_dimensions, node_grid, n_ghost_layers) {
+  LBWalberlaD3Q19FluctuatingMRT(
+      std::shared_ptr<WalberlaBlockForest> blockforest, double viscosity,
+      double density, double kT, unsigned int seed)
+      : LBWalberlaImpl(std::move(blockforest), viscosity) {
     m_kT = kT;
     construct_lattice_model(viscosity, kT, seed);
     setup_with_valid_lattice_model(density);

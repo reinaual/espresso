@@ -32,20 +32,18 @@ void walberla_mpi_init() {
       walberla::mpi::Environment(argc, argv);
 }
 
-LBWalberlaBase *new_lb_walberla(double viscosity, double density,
-                                const Utils::Vector3i &grid_dimensions,
-                                const Utils::Vector3i &node_grid, double kT,
-                                unsigned int seed) {
+LBWalberlaBase *
+new_lb_walberla(std::shared_ptr<walberla::WalberlaBlockForest> blockforest,
+                double viscosity, double density, double kT,
+                unsigned int seed) {
 
   LBWalberlaBase *lb_walberla_instance;
   if (kT == 0.) { // un-thermalized LB
-    lb_walberla_instance =
-        new walberla::LBWalberlaD3Q19MRT(walberla::LBWalberlaD3Q19MRT{
-            viscosity, density, grid_dimensions, node_grid, 1});
+    lb_walberla_instance = new walberla::LBWalberlaD3Q19MRT(
+        walberla::LBWalberlaD3Q19MRT{blockforest, viscosity, density});
   } else { // thermalized LB
     lb_walberla_instance = new walberla::LBWalberlaD3Q19FluctuatingMRT(
-        walberla::LBWalberlaD3Q19FluctuatingMRT{
-            viscosity, density, grid_dimensions, node_grid, 1, kT, seed});
+        walberla::LBWalberlaD3Q19FluctuatingMRT{blockforest, viscosity, density, kT, seed});
   }
   return lb_walberla_instance;
 }

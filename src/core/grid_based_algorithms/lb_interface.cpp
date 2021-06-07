@@ -101,7 +101,7 @@ void lb_lbfluid_sanity_checks(double time_step) {
   if (lattice_switch == ActiveLB::WALBERLA) {
 #ifdef LB_WALBERLA
     // Make sure, Walberla and Espresso agree on domain decomposition
-    auto walberla_domain = lb_walberla()->get_local_domain();
+    auto walberla_domain = lb_walberla()->get_blockforest()->get_local_domain();
     // Unit conversion
     auto const agrid = lb_lbfluid_get_agrid();
     walberla_domain.first *= agrid;
@@ -250,7 +250,7 @@ void lb_lbfluid_save_checkpoint(const std::string &filename, bool binary) {
     }
 
     double laf[3];
-    auto const gridsize = lb_walberla()->get_grid_dimensions();
+    auto const gridsize = lb_walberla()->get_blockforest()->get_grid_dimensions();
     auto const pop_size = lb_walberla()->stencil_size();
     std::vector<double> pop(pop_size);
 
@@ -306,7 +306,7 @@ void lb_lbfluid_load_checkpoint(const std::string &filename, bool binary) {
     auto const pop_size = lb_walberla()->stencil_size();
     size_t saved_pop_size;
     Utils::Vector3d laf;
-    auto const gridsize = lb_walberla()->get_grid_dimensions();
+    auto const gridsize = lb_walberla()->get_blockforest()->get_grid_dimensions();
     int saved_gridsize[3];
     if (!binary) {
       res = fscanf(cpfile, "%i %i %i\n%zu\n", &saved_gridsize[0],
@@ -423,7 +423,7 @@ void lb_lbfluid_load_checkpoint(const std::string &filename, bool binary) {
 Utils::Vector3i lb_lbfluid_get_shape() {
 #ifdef LB_WALBERLA
   if (lattice_switch == ActiveLB::WALBERLA) {
-    return lb_walberla()->get_grid_dimensions();
+    return lb_walberla()->get_blockforest()->get_grid_dimensions();
   }
 #endif
 
