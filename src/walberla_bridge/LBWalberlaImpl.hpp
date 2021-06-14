@@ -137,7 +137,7 @@ protected:
   std::shared_ptr<PDFStreamingCommunicator> m_pdf_streaming_communication;
 
   /** Block forest */
-  std::shared_ptr<WalberlaBlockForest> m_blockforest;
+  const WalberlaBlockForest * m_blockforest;
 
   std::shared_ptr<timeloop::SweepTimeloop> m_time_loop;
 
@@ -181,9 +181,9 @@ protected:
   };
 
 public:
-  LBWalberlaImpl(std::shared_ptr<WalberlaBlockForest> blockforest,
+  LBWalberlaImpl(const WalberlaBlockForest * blockforest,
                  double viscosity)
-      : m_blockforest{std::move(blockforest)} {
+      : m_blockforest{blockforest} {
 
     // Init and register force fields
     m_last_applied_force_field_id = field::addToStorage<VectorField>(
@@ -294,7 +294,7 @@ public:
 
   void ghost_communication() override { (*m_full_communication)(); }
 
-  std::shared_ptr<WalberlaBlockForest> get_blockforest() const override {
+  [[nodiscard]] const WalberlaBlockForest * get_blockforest() const override {
     return m_blockforest;
   };
 

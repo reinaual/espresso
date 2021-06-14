@@ -38,7 +38,7 @@ public:
     auto *lm = dynamic_cast<LatticeModel *>(m_lattice_model.get());
     return viscosity_from_shear_relaxation_rate(lm->omega_shear_);
   };
-  LBWalberlaD3Q19MRT(std::shared_ptr<WalberlaBlockForest> blockforest,
+  LBWalberlaD3Q19MRT(const WalberlaBlockForest * blockforest,
                      double viscosity, double density)
       : LBWalberlaImpl(blockforest, viscosity) {
     construct_lattice_model(viscosity);

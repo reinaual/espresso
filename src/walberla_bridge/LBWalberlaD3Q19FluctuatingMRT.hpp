@@ -41,9 +41,9 @@ public:
     return viscosity_from_shear_relaxation_rate(lm->omega_shear_);
   };
   LBWalberlaD3Q19FluctuatingMRT(
-      std::shared_ptr<WalberlaBlockForest> blockforest, double viscosity,
+      const WalberlaBlockForest * blockforest, double viscosity,
       double density, double kT, unsigned int seed)
-      : LBWalberlaImpl(std::move(blockforest), viscosity) {
+      : LBWalberlaImpl(blockforest, viscosity) {
     m_kT = kT;
     construct_lattice_model(viscosity, kT, seed);
     setup_with_valid_lattice_model(density);
