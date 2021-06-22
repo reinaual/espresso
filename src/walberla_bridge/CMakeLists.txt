@@ -16,8 +16,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-set(WalberlaBridge_SRC generated_kernels/FluctuatingMRTLatticeModel.cpp generated_kernels/MRTLatticeModel.cpp
-                       lb_walberla_init.cpp WalberlaBlockForest.hpp)
+set(WalberlaBridge_SRC WalberlaBlockForest.hpp
+                       generated_kernels/FluctuatingMRTLatticeModel.cpp generated_kernels/MRTLatticeModel.cpp
+                       lb_walberla_init.cpp
+                       generated_kernels/DiffusiveFluxKernel.cpp generated_kernels/ContinuityKernel.cpp
+                       ekin_walberla_init.cpp)
 if (WALBERLA_USE_AVX)
   list(APPEND WalberlaBridge_SRC generated_kernels/FluctuatingMRTLatticeModelAvx.cpp generated_kernels/MRTLatticeModelAvx.cpp)
 endif()
