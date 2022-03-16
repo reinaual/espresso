@@ -26,14 +26,16 @@
 
 #include <memory>
 
-#include <field/FlagField.h>
-
 namespace walberla {
+namespace domain_decomposition {
+// forward declaration
+class BlockDataID;
+} // namespace domain_decomposition
+
 template <typename FloatType>
 class EKReactionIndexed : public EKReactionBase<FloatType> {
 private:
   using ReactionBase = EKReactionBase<FloatType>;
-  using FlagField = walberla::FlagField<walberla::uint8_t>;
 
   domain_decomposition::BlockDataID m_flagfield_id;
   domain_decomposition::BlockDataID m_indexvector_id;
@@ -56,19 +58,15 @@ public:
   [[nodiscard]] boost::optional<bool>
   get_node_is_boundary(const Utils::Vector3i &node);
 
-  [[nodiscard]] auto get_indexvector_id() const { return m_indexvector_id; }
-  [[nodiscard]] auto get_flagfield_id() const { return m_flagfield_id; }
+  [[nodiscard]] auto get_indexvector_id() const noexcept {
+    return m_indexvector_id;
+  }
+  [[nodiscard]] auto get_flagfield_id() const noexcept {
+    return m_flagfield_id;
+  }
 
   void boundary_update();
 };
-
-// TODO:
-//  -flag field instantiation
-//  -index field instantiation (think about handling that one without the flag
-//  field) -lazy populate index field from flag field -flag field management
-//  -interface functions
-//  -perform reactions
-//  -get_kernels
 
 // explicit template instantiation
 template class EKReactionIndexed<double>;
