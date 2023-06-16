@@ -116,10 +116,27 @@ public:
     return detail::shape_impl<decltype(declval<ObsType>()(
         declval<ParticleReferenceRange>()))>::eval(ids().size());
   }
-// auto const& [local_pids, local_traits] = obs.evaluate(...)
- std::pair<std::vector<int>,std::vector<double>> 
+
+ std::vector<double>
   evaluate(Utils::Span<std::reference_wrapper<Particle>> particles,
-           const ParticleObservables::traits<Particle> &) const override {
+           const ParticleObservables::traits<Particle> &traits) const override final{
+            auto const& [local_pids, local_traits] = evaluate_impl(particles, traits);
+            auto const pid_begin = std::begin(local_pids);
+            auto const pid_end = std::end(local_pids);
+            std::vector<double> output;
+            for (auto const pid : local_pids) {
+              auto const pid_pos = std::find(pid_begin, pid_end, pid);
+              auto const i = static_cast<std::size_t>(std::distance(pid_begin, pid_pos));
+              output.emplace_back(local_traits[i]);
+            }
+            return output;
+           }
+
+
+// auto const& [local_pids, local_traits] = obs.evaluate(...)
+virtual std::pair<std::vector<int>,std::vector<double>> 
+  evaluate_impl(Utils::Span<std::reference_wrapper<Particle>> particles,
+           const ParticleObservables::traits<Particle> &) const {
     std::vector<double> res;
     Utils::flatten(ObsType{}(particles), std::back_inserter(res));
     std::vector<int> pids;
