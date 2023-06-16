@@ -41,7 +41,7 @@ public:
   }
 
   std::vector<double>
-  evaluate(Utils::Span<std::reference_wrapper<Particle>> particles,
+  evaluate(ParticleReferenceRange const & particles,
            const ParticleObservables::traits<Particle> &) const override {
     Utils::Histogram<double, 3> histogram(n_bins(), limits());
     for (auto const &p : particles) {

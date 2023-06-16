@@ -49,7 +49,7 @@ public:
   }
 
   std::vector<double>
-  evaluate(Utils::Span<std::reference_wrapper<Particle>> particles,
+  evaluate(ParticleReferenceRange const & particles,
            const ParticleObservables::traits<Particle> &traits) const override {
     auto const no_of_angles = n_values();
     auto const no_of_bonds = no_of_angles + 1;

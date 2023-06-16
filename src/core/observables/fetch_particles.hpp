@@ -23,7 +23,7 @@
 #include "grid.hpp"
 #include "cells.hpp"
 
-#include <utils/Span.hpp>
+#include "PidObservable.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -36,10 +36,10 @@
  *  @param ids particle identifiers
  *  @return array of particle copies, with positions in the current box.
  */
-inline std::vector<std::reference_wrapper<Particle>> fetch_particles(std::vector<int> const &ids) {
+inline auto fetch_particles(std::vector<int> const &ids) {
   auto const ids_set = std::set<int>{ids.begin(), ids.end()};
   auto const local_particles = ::cell_structure.local_particles();
-  std::vector<std::reference_wrapper<Particle>> local_particle_refs;
+  Observables::ParticleReferenceRange local_particle_refs;
   std::copy_if(local_particles.begin(), local_particles.end(),
 	       std::back_inserter(local_particle_refs),
 	       [&ids_set](Particle &p) { return ids_set.count(p.id()) != 0; });

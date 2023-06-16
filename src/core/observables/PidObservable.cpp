@@ -26,7 +26,7 @@
 
 namespace Observables {
 std::vector<double> PidObservable::operator()() const {
-  auto particles = fetch_particles(ids());
+  auto const & particles = fetch_particles(ids());
   return this->evaluate(particles,
                         ParticleObservables::traits<Particle>{});
 }

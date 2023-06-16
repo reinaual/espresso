@@ -31,7 +31,7 @@ public:
   std::vector<std::size_t> shape() const override { return {3}; }
 
   std::vector<double>
-  evaluate(Utils::Span<std::reference_wrapper<Particle>> particles,
+  evaluate(ParticleReferenceRange const & particles,
            const ParticleObservables::traits<Particle> &) const override {
     Utils::Vector3d res{};
     for (auto const &p : particles) {

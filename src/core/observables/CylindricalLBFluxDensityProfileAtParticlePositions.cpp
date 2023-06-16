@@ -31,7 +31,7 @@
 namespace Observables {
 std::vector<double>
 CylindricalLBFluxDensityProfileAtParticlePositions::evaluate(
-    Utils::Span<std::reference_wrapper<Particle>> particles,
+    ParticleReferenceRange const & particles,
     const ParticleObservables::traits<Particle> &traits) const {
   Utils::CylindricalHistogram<double, 3> histogram(n_bins(), limits());
   // First collect all positions (since we want to call the LB function to

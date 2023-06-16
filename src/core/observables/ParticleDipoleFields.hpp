@@ -38,7 +38,7 @@ public:
   using ParticleObservable<
       ParticleObservables::DipoleFields>::ParticleObservable;
   std::vector<double>
-  evaluate(ParticleReferenceRange particles,
+  evaluate(ParticleReferenceRange const & particles,
            const ParticleObservables::traits<Particle> &traits) const override {
 #ifdef DIPOLE_FIELD_TRACKING
     mpi_calc_long_range_fields();

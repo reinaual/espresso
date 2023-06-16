@@ -53,7 +53,7 @@ public:
   }
 
   std::vector<double>
-  evaluate(Utils::Span<std::reference_wrapper<Particle>> particles,
+  evaluate(ParticleReferenceRange const & particles,
            const ParticleObservables::traits<Particle> &traits) const override {
     std::vector<double> res(n_values());
     auto v1 = box_geo.get_mi_vector(traits.position(particles[1]),

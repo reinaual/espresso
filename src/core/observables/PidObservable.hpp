@@ -42,7 +42,7 @@
 namespace Observables {
 
 using ParticleReferenceRange =
-    Utils::Span<std::reference_wrapper<const Particle>>;
+    std::vector<std::reference_wrapper<const Particle>>;
 
 /** %Particle-based observable.
  *
@@ -53,14 +53,8 @@ class PidObservable : virtual public Observable {
   /** Identifiers of particles measured by this observable */
   std::vector<int> m_ids;
 
-  std::vector<double>
-  evaluate(std::vector<std::reference_wrapper<Particle>> particles,
-           const ParticleObservables::traits<Particle> &traits) const {
-            return evaluate(Utils::Span<std::reference_wrapper<Particle>>{particles}, traits);
-           }
-
   virtual std::vector<double>
-  evaluate(Utils::Span<std::reference_wrapper<Particle>> particles,
+  evaluate(ParticleReferenceRange const & particles,
            const ParticleObservables::traits<Particle> &traits) const = 0;
 
 public:
@@ -114,20 +108,26 @@ public:
     using std::declval;
 
     return detail::shape_impl<decltype(declval<ObsType>()(
-        declval<ParticleReferenceRange>()))>::eval(ids().size());
+        declval<ParticleReferenceRange const &>()))>::eval(ids().size());
   }
 
- std::vector<double>
-  evaluate(Utils::Span<std::reference_wrapper<Particle>> particles,
-           const ParticleObservables::traits<Particle> &traits) const override final{
+ virtual std::vector<double>
+  evaluate(ParticleReferenceRange const & particles,
+           const ParticleObservables::traits<Particle> &traits) const override{
             auto const& [local_pids, local_traits] = evaluate_impl(particles, traits);
             auto const pid_begin = std::begin(local_pids);
             auto const pid_end = std::end(local_pids);
+            
+            auto const n_dims = local_traits.size()/local_pids.size();
             std::vector<double> output;
-            for (auto const pid : local_pids) {
+            output.reserve(local_traits.size());
+            for (auto const pid : ids()) {
               auto const pid_pos = std::find(pid_begin, pid_end, pid);
               auto const i = static_cast<std::size_t>(std::distance(pid_begin, pid_pos));
-              output.emplace_back(local_traits[i]);
+              for (std::size_t j=0; j < n_dims; ++j){
+                output.emplace_back(local_traits[i*n_dims+j]);
+              }
+              
             }
             return output;
            }
@@ -135,7 +135,7 @@ public:
 
 // auto const& [local_pids, local_traits] = obs.evaluate(...)
 virtual std::pair<std::vector<int>,std::vector<double>> 
-  evaluate_impl(Utils::Span<std::reference_wrapper<Particle>> particles,
+  evaluate_impl(ParticleReferenceRange const & particles,
            const ParticleObservables::traits<Particle> &) const {
     std::vector<double> res;
     Utils::flatten(ObsType{}(particles), std::back_inserter(res));

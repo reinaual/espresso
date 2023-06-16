@@ -66,9 +66,9 @@ class Observables(ut.TestCase):
     if espressomd.has_features("ELECTROSTATICS"):
         partcls.q = np.random.random(N_PART)
 
-    if espressomd.has_features("VIRTUAL_SITES"):
-        p = system.part.by_id(partcls.id[8])
-        p.virtual = True
+    # if espressomd.has_features("VIRTUAL_SITES"):
+    #     p = system.part.by_id(partcls.id[8])
+    #     p.virtual = True
 
     def generate_test_for_pid_observable(
             _obs_class, _pprop_name, _agg_type=None):

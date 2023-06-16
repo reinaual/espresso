@@ -36,7 +36,7 @@ public:
   using PidProfileObservable::PidProfileObservable;
 
   std::vector<double>
-  evaluate(Utils::Span<std::reference_wrapper<Particle>> particles,
+  evaluate(ParticleReferenceRange const & particles,
            const ParticleObservables::traits<Particle> &traits) const override {
     Utils::Histogram<double, 1> histogram(n_bins(), limits());
 
