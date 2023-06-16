@@ -1,6 +1,12 @@
+# Invitation to the ESPResSo Summer School 2023
+
+[![CECAM Flagship School registration link](https://img.shields.io/badge/CECAM%20Flagship%20School-Register%20Now-blue?style=for-the-badge)](https://www.cecam.org/workshop-details/1229)
+
+The summer school "Simulating energy materials with ESPResSo and waLBerla" will take place on October 9-13, 2023, in Stuttgart. Registration is now open on [CECAM](https://www.cecam.org/workshop-details/1229).
+
 # ESPResSo
 
-[![GitLab CI](https://gitlab.icp.uni-stuttgart.de/espressomd/espresso/badges/python/pipeline.svg)](https://gitlab.icp.uni-stuttgart.de/espressomd/espresso/commits/python)
+[![GitLab CI](https://gitlab.icp.uni-stuttgart.de/espressomd/espresso/badges/python/pipeline.svg)](https://gitlab.icp.uni-stuttgart.de/espressomd/espresso/-/commits/python)
 [![codecov](https://codecov.io/gh/espressomd/espresso/branch/python/graph/badge.svg)](https://codecov.io/gh/espressomd/espresso)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jngrad/espresso-binder/HEAD)
 [![Contribute with Gitpod](https://img.shields.io/badge/Contribute%20with-Gitpod-908a85?logo=gitpod)](https://gitpod.io/#https://github.com/espressomd/espresso)

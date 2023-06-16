@@ -50,6 +50,13 @@ template <> struct traits<Particle> {
     return Utils::Vector3d{};
 #endif
   }
+  auto dipole_field(Particle const &p) const {
+#ifdef DIPOLE_FIELD_TRACKING
+    return p.dip_fld();
+#else
+    return Utils::Vector3d{};
+#endif
+  }
   auto velocity_body(Particle const &p) const {
 #ifdef ROTATION
     return convert_vector_space_to_body(p, p.v());
