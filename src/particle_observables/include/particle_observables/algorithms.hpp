@@ -39,43 +39,68 @@ struct One {
   }
 };
 
+
+
 template <class ValueOp, class WeightOp> struct WeightedSum {
   template <class ParticleRange>
+    using value_op_type = decltype(std::declval<ValueOp>().operator()(std::declval<ParticleRange const &>()) );
+  
+  template <class ParticleRange>
+    using weight_op_type = decltype(std::declval<WeightOp>().operator()(std::declval<ParticleRange const &>()) );
+
+  template <class ParticleRange>
+  using return_type = std::pair<value_op_type<ParticleRange>, weight_op_type<ParticleRange>>;
+
+  template <class ParticleRange>
   auto operator()(ParticleRange const &particles) const {
-    using particle_type = typename ParticleRange::value_type;
-    using value_op_type = decltype(ValueOp{}(std::declval<particle_type>()));
-    using weight_op_type = decltype(WeightOp{}(std::declval<particle_type>()));
-    auto func = [](auto sum, auto const &p) {
+    auto func = [](return_type<ParticleRange> const &sum, return_type<ParticleRange> const &p) {
       auto const w = WeightOp{}(p);
       return std::make_pair(sum.first + ValueOp{}(p)*w, sum.second + w);
     };
 
     return std::accumulate(std::begin(particles), std::end(particles),
-                           std::pair<value_op_type, weight_op_type>(), func);
+                           return_type<ParticleRange>{}, func);
   }
+
+  template <class ParticleRange>
+  static auto reduction(return_type<ParticleRange> const &acc, return_type<ParticleRange> const &val) {
+    return return_type<ParticleRange>{acc.first + val.first * val.second, acc.second + val.second};
+  }
+  // static auto reduction(auto const &acc, auto const &val) {
+  //   return std::make_pair(acc.first + val.first * val.second, acc.second + val.second);
+  // }
 };
 } // namespace detail
 
 template <class ValueOp, class WeightOp> struct WeightedSum {
   template <class ParticleRange>
   auto operator()(ParticleRange const &particles) const {
-    return detail::WeightedSum<ValueOp, WeightOp>()(particles).first;
+    return detail::WeightedSum<ValueOp, WeightOp>()(particles);
+  }
+  static auto reduction(auto const &acc, auto const &val) {
+    return std::make_pair(acc.first + val.first * val.second, acc.second + val.second);
   }
 };
 
 template <class ValueOp> struct Sum {
   template <class ParticleRange>
   auto operator()(ParticleRange const &particles) const {
-    return detail::WeightedSum<ValueOp, detail::One>()(particles).first;
+    return detail::WeightedSum<ValueOp, detail::One>()(particles);
   }
+  // static auto reduction(auto const &acc, auto const &val) {
+  //   return std::make_pair(acc.first + val.first, 0.);
+  // }
 };
 
 template <class ValueOp, class WeightOp> struct WeightedAverage {
   template <class ParticleRange>
   auto operator()(ParticleRange const &particles) const {
     auto const ws = detail::WeightedSum<ValueOp, WeightOp>()(particles);
-    return (ws.second) ? ws.first / ws.second : ws.first;
+    return (ws.second) ? std::make_pair(ws.first / ws.second, ws.second) : ws;
   }
+  // static auto reduction(auto const &acc, auto const &val) {
+  //   return std::make_pair((acc.first * acc.second + val.first * val.second)/(acc.second + val.second), acc.second + val.second);
+  // }
 };
 
 template <class ValueOp> struct Average {
@@ -83,6 +108,9 @@ template <class ValueOp> struct Average {
   auto operator()(ParticleRange const &particles) const {
     return WeightedAverage<ValueOp, detail::One>()(particles);
   }
+// static auto reduction(auto const &acc, auto const &val) {
+//     return WeightedAverage<ValueOp, detail::One>::reduction(acc, val);
+//   }
 };
 
 template <class ValueOp> struct Map {

@@ -25,6 +25,7 @@
 #include "Observable.hpp"
 #include "Particle.hpp"
 #include "ParticleTraits.hpp"
+#include "communication.hpp"
 
 #include <utils/Span.hpp>
 #include <utils/Vector.hpp>
@@ -85,6 +86,21 @@ template <class T> struct shape_impl<std::vector<T>> {
     return ret;
   }
 };
+
+template<class T, class U> struct shape_impl<std::pair<T,U>> {
+  static std::vector<std::size_t> eval(std::size_t n_part) {
+    return shape_impl<T>::eval(n_part);
+  }
+};
+
+template<class T>
+struct is_map : std::false_type {};
+
+template<class T>
+struct is_map<ParticleObservables::Map<T>> : std::true_type {};
+
+
+
 } // namespace detail
 
 /**
@@ -114,34 +130,32 @@ public:
  virtual std::vector<double>
   evaluate(ParticleReferenceRange const & particles,
            const ParticleObservables::traits<Particle> &traits) const override{
-            auto const& [local_pids, local_traits] = evaluate_impl(particles, traits);
-            auto const pid_begin = std::begin(local_pids);
-            auto const pid_end = std::end(local_pids);
-            
-            auto const n_dims = local_traits.size()/local_pids.size();
-            std::vector<double> output;
-            output.reserve(local_traits.size());
-            for (auto const pid : ids()) {
-              auto const pid_pos = std::find(pid_begin, pid_end, pid);
-              auto const i = static_cast<std::size_t>(std::distance(pid_begin, pid_pos));
-              for (std::size_t j=0; j < n_dims; ++j){
-                output.emplace_back(local_traits[i*n_dims+j]);
-              }
-              
-            }
-            return output;
-           }
-
-
-// auto const& [local_pids, local_traits] = obs.evaluate(...)
-virtual std::pair<std::vector<int>,std::vector<double>> 
-  evaluate_impl(ParticleReferenceRange const & particles,
-           const ParticleObservables::traits<Particle> &) const {
-    std::vector<double> res;
-    Utils::flatten(ObsType{}(particles), std::back_inserter(res));
-    std::vector<int> pids;
-    Utils::flatten(ParticleObservables::Identities{}(particles), std::back_inserter(pids));
-    return {pids, res};
+    if constexpr (detail::is_map<ObsType>::value){
+      std::vector<double> local_traits;
+      Utils::flatten(ObsType{}(particles), std::back_inserter(local_traits));
+      std::vector<int> local_pids;
+      Utils::flatten(ParticleObservables::Identities{}(particles), std::back_inserter(local_pids));
+      auto const pid_begin = std::begin(local_pids);
+      auto const pid_end = std::end(local_pids);
+      auto const n_dims = local_traits.size()/local_pids.size();
+      std::vector<double> output;
+      output.reserve(local_traits.size());
+      for (auto const pid : ids()) {
+        auto const pid_pos = std::find(pid_begin, pid_end, pid);
+        auto const i = static_cast<std::size_t>(std::distance(pid_begin, pid_pos));
+        for (std::size_t j=0; j < n_dims; ++j){
+          output.emplace_back(local_traits[i*n_dims+j]);
+        }
+      }
+      return output;
+    }
+    else
+    {
+      auto const local_result = ObsType{}(particles);
+      decltype(local_result) global_result;
+      boost::mpi::reduce(::comm_cart, local_result, global_result, &ObsType::reduction);
+      return {};
+    }
   }
 };
 
