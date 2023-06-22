@@ -119,7 +119,11 @@ public:
   evaluate(ParticleReferenceRange const &particles,
            const ParticleObservables::traits<Particle> &traits) const override {
     if constexpr (is_map<ObsType>::value) {
-      auto const &[local_pids, local_traits] = evaluate_impl(particles, traits);
+      std::vector<double> local_traits;
+      Utils::flatten(ObsType{}(particles), std::back_inserter(local_traits));
+      std::vector<int> local_pids;
+      Utils::flatten(ParticleObservables::Identities{}(particles),
+                     std::back_inserter(local_pids));
       auto const pid_begin = std::begin(local_pids);
       auto const pid_end = std::end(local_pids);
 
@@ -139,18 +143,6 @@ public:
       // handle non-Map case here
       return {};
     }
-  }
-
-  // auto const& [local_pids, local_traits] = obs.evaluate(...)
-  virtual std::pair<std::vector<int>, std::vector<double>>
-  evaluate_impl(ParticleReferenceRange const &particles,
-                const ParticleObservables::traits<Particle> &) const {
-    std::vector<double> res;
-    Utils::flatten(ObsType{}(particles), std::back_inserter(res));
-    std::vector<int> pids;
-    Utils::flatten(ParticleObservables::Identities{}(particles),
-                   std::back_inserter(pids));
-    return {pids, res};
   }
 };
 
