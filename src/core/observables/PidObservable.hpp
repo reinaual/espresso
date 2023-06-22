@@ -111,25 +111,34 @@ public:
         declval<ParticleReferenceRange const &>()))>::eval(ids().size());
   }
 
+  template <typename T> struct is_map : std::false_type {};
+  template <typename T>
+  struct is_map<ParticleObservables::Map<T>> : std::true_type {};
+
   virtual std::vector<double>
   evaluate(ParticleReferenceRange const &particles,
            const ParticleObservables::traits<Particle> &traits) const override {
-    auto const &[local_pids, local_traits] = evaluate_impl(particles, traits);
-    auto const pid_begin = std::begin(local_pids);
-    auto const pid_end = std::end(local_pids);
+    if constexpr (is_map<ObsType>::value) {
+      auto const &[local_pids, local_traits] = evaluate_impl(particles, traits);
+      auto const pid_begin = std::begin(local_pids);
+      auto const pid_end = std::end(local_pids);
 
-    auto const n_dims = local_traits.size() / local_pids.size();
-    std::vector<double> output;
-    output.reserve(local_traits.size());
-    for (auto const pid : ids()) {
-      auto const pid_pos = std::find(pid_begin, pid_end, pid);
-      auto const i =
-          static_cast<std::size_t>(std::distance(pid_begin, pid_pos));
-      for (std::size_t j = 0; j < n_dims; ++j) {
-        output.emplace_back(local_traits[i * n_dims + j]);
+      auto const n_dims = local_traits.size() / local_pids.size();
+      std::vector<double> output;
+      output.reserve(local_traits.size());
+      for (auto const pid : ids()) {
+        auto const pid_pos = std::find(pid_begin, pid_end, pid);
+        auto const i =
+            static_cast<std::size_t>(std::distance(pid_begin, pid_pos));
+        for (std::size_t j = 0; j < n_dims; ++j) {
+          output.emplace_back(local_traits[i * n_dims + j]);
+        }
       }
+      return output;
+    } else {
+      // handle non-Map case here
+      return {};
     }
-    return output;
   }
 
   // auto const& [local_pids, local_traits] = obs.evaluate(...)
