@@ -25,6 +25,7 @@
 #include "Observable.hpp"
 #include "Particle.hpp"
 #include "ParticleTraits.hpp"
+#include "communication.hpp"
 
 #include <utils/Span.hpp>
 #include <utils/Vector.hpp>
@@ -85,6 +86,11 @@ template <class T> struct shape_impl<std::vector<T>> {
     return ret;
   }
 };
+template <class T, class U> struct shape_impl<std::pair<T, U>> {
+  static std::vector<std::size_t> eval(std::size_t n_part) {
+    return shape_impl<T>::eval(n_part);
+  }
+};
 } // namespace detail
 
 /**
@@ -115,7 +121,7 @@ public:
   template <typename T>
   struct is_map<ParticleObservables::Map<T>> : std::true_type {};
 
-  virtual std::vector<double>
+  std::vector<double>
   evaluate(ParticleReferenceRange const &particles,
            const ParticleObservables::traits<Particle> &traits) const override {
     if constexpr (is_map<ObsType>::value) {
@@ -140,8 +146,16 @@ public:
       }
       return output;
     } else {
-      // handle non-Map case here
-      return {};
+      auto const local_result = ObsType{}(particles);
+      std::remove_const_t<decltype(local_result)> result;
+
+      boost::mpi::reduce(
+          comm_cart, local_result, result,
+          ObsType::template reduction<decltype(std::declval<ObsType>()(
+              std::declval<ParticleReferenceRange const &>()))>,
+          0);
+
+      return local_result.first;
     }
   }
 };

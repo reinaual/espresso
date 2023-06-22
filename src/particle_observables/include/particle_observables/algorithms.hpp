@@ -59,14 +59,25 @@ template <class ValueOp, class WeightOp> struct WeightedSum {
 template <class ValueOp, class WeightOp> struct WeightedSum {
   template <class ParticleRange>
   auto operator()(ParticleRange const &particles) const {
-    return detail::WeightedSum<ValueOp, WeightOp>()(particles).first;
+    auto const ws = detail::WeightedSum<ValueOp, WeightOp>()(particles);
+
+    return std::make_pair(ws.first, ws.second);
+  }
+
+  template <typename T> static auto reduction(T const &acc, T const &val) {
+    return std::make_pair(acc.first + val.first, acc.second + val.second);
   }
 };
 
 template <class ValueOp> struct Sum {
   template <class ParticleRange>
   auto operator()(ParticleRange const &particles) const {
-    return detail::WeightedSum<ValueOp, detail::One>()(particles).first;
+    return std::make_pair(
+        detail::WeightedSum<ValueOp, detail::One>()(particles).first, 0.0);
+  }
+
+  template <typename T> static auto reduction(T const &acc, T const &val) {
+    return WeightedSum<ValueOp, detail::One>::reduction(acc, val);
   }
 };
 
@@ -74,7 +85,16 @@ template <class ValueOp, class WeightOp> struct WeightedAverage {
   template <class ParticleRange>
   auto operator()(ParticleRange const &particles) const {
     auto const ws = detail::WeightedSum<ValueOp, WeightOp>()(particles);
-    return (ws.second) ? ws.first / ws.second : ws.first;
+    return std::make_pair((ws.second) ? ws.first / ws.second : ws.first,
+                          ws.second);
+  }
+
+  template <typename T> static auto reduction(T const &acc, T const &val) {
+    auto const new_val = acc.first * acc.second + val.first * val.second;
+    auto const new_weight = acc.second + val.second;
+
+    return std::make_pair((new_weight) ? new_val / new_weight : new_val,
+                          new_weight);
   }
 };
 
@@ -82,6 +102,10 @@ template <class ValueOp> struct Average {
   template <class ParticleRange>
   auto operator()(ParticleRange const &particles) const {
     return WeightedAverage<ValueOp, detail::One>()(particles);
+  }
+
+  template <typename T> static auto reduction(T const &acc, T const &val) {
+    return WeightedAverage<ValueOp, detail::One>::reduction(acc, val);
   }
 };
 
