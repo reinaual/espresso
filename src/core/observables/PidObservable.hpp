@@ -155,7 +155,7 @@ public:
               std::declval<ParticleReferenceRange const &>()))>,
           0);
 
-      return local_result.first;
+      return result.first;
     }
   }
 };
