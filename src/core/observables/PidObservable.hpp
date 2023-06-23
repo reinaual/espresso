@@ -31,6 +31,9 @@
 #include <utils/Vector.hpp>
 #include <utils/flatten.hpp>
 
+#include <boost/mpi/collectives/gather.hpp>
+#include <boost/mpi/collectives/reduce.hpp>
+
 #include <boost/range/algorithm/copy.hpp>
 
 #include <cstddef>
@@ -91,6 +94,38 @@ template <class T, class U> struct shape_impl<std::pair<T, U>> {
     return shape_impl<T>::eval(n_part);
   }
 };
+
+static auto get_argsort(boost::mpi::communicator const &comm,
+                        std::vector<int> const &local_pids,
+                        std::vector<int> const &sorted_pids) {
+  std::vector<unsigned int> argsort{};
+
+  std::vector<std::vector<int>> global_pids;
+  boost::mpi::gather(comm, local_pids, global_pids, 0);
+  if (comm.rank() == 0) {
+    auto const n_part = sorted_pids.size();
+    std::vector<int> unsorted_pids;
+    unsorted_pids.reserve(n_part);
+    for (auto const &vec : global_pids) {
+      for (auto const pid : vec) {
+        unsorted_pids.emplace_back(pid);
+      }
+    }
+    // get vector of indices that sorts the data vectors
+    std::vector<unsigned int> iota(n_part);
+    std::iota(iota.begin(), iota.end(), 0u);
+    argsort.reserve(n_part);
+    auto const pid_begin = std::begin(unsorted_pids);
+    auto const pid_end = std::end(unsorted_pids);
+    for (auto const pid : sorted_pids) {
+      auto const pid_pos = std::find(pid_begin, pid_end, pid);
+      auto const i =
+          static_cast<std::size_t>(std::distance(pid_begin, pid_pos));
+      argsort.emplace_back(iota[i]);
+    }
+  }
+  return argsort;
+}
 } // namespace detail
 
 /**
@@ -134,17 +169,34 @@ public:
       auto const pid_end = std::end(local_pids);
 
       auto const n_dims = local_traits.size() / local_pids.size();
-      std::vector<double> output;
-      output.reserve(local_traits.size());
-      for (auto const pid : ids()) {
-        auto const pid_pos = std::find(pid_begin, pid_end, pid);
-        auto const i =
-            static_cast<std::size_t>(std::distance(pid_begin, pid_pos));
-        for (std::size_t j = 0; j < n_dims; ++j) {
-          output.emplace_back(local_traits[i * n_dims + j]);
+
+      std::vector<std::vector<double>> global_traits;
+      boost::mpi::gather(comm_cart, local_traits, global_traits, 0);
+
+      auto const argsort = detail::get_argsort(comm_cart, local_pids, ids());
+
+      if (comm_cart.rank() == 0) {
+        std::vector<double> global_traits_flattened;
+        global_traits_flattened.reserve(ids().size() * n_dims);
+
+        for (auto &vec : global_traits) {
+          for (auto const val : vec) {
+            global_traits_flattened.emplace_back(val);
+          }
         }
+
+        std::vector<double> output;
+        output.reserve(n_dims * ids().size());
+
+        for (auto const i : argsort) {
+          for (std::size_t j = 0; j < n_dims; ++j) {
+            output.emplace_back(global_traits_flattened[i * n_dims + j]);
+          }
+        }
+        return output;
+      } else {
+        return {};
       }
-      return output;
     } else {
       auto const local_result = ObsType{}(particles);
       std::remove_const_t<decltype(local_result)> result;
