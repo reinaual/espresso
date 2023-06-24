@@ -29,6 +29,8 @@
 #include <utils/Histogram.hpp>
 #include <utils/Span.hpp>
 
+#include <boost/range/combine.hpp>
+
 #include <cstddef>
 #include <vector>
 
@@ -45,16 +47,22 @@ public:
   evaluate(ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &traits) const override {
     using pos_type = decltype(traits.position(std::declval<Particle>()));
+    using vel_type = decltype(traits.velocity(std::declval<Particle>()));
 
     std::vector<pos_type> local_folded_positions;
     local_folded_positions.reserve(local_particles.size());
+    std::vector<vel_type> local_velocities;
+    local_velocities.reserve(local_particles.size());
 
     for (auto const &p : local_particles) {
       local_folded_positions.emplace_back(folded_position(traits.position(p), box_geo));
+      local_velocities.emplace_back(traits.velocity(p));
     }
 
     std::vector<std::vector<pos_type>> global_folded_positions;
+    std::vector<std::vector<vel_type>> global_velocities;
     boost::mpi::gather(comm_cart, local_folded_positions, global_folded_positions, 0);
+    boost::mpi::gather(comm_cart, local_velocities, global_velocities, 0);
 
     if (comm_cart.rank() != 0) {
       return {};
@@ -62,9 +70,9 @@ public:
 
     Utils::Histogram<double, 3> histogram(n_bins(), limits());
 
-    for (auto const &vec : global_folded_positions) {
-      for (auto const &p : vec) {
-        histogram.update(p);
+    for (auto const &[pos_vec, vel_vec] : boost::combine(global_folded_positions, global_velocities)) {
+      for (auto const &[pos, vel] : boost::combine(pos_vec, vel_vec)) {
+        histogram.update(pos, vel);
       }
     }
 
