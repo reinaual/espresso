@@ -35,19 +35,34 @@ class CylindricalDensityProfile : public CylindricalPidProfileObservable {
 public:
   using CylindricalPidProfileObservable::CylindricalPidProfileObservable;
   std::vector<double>
-  evaluate(ParticleReferenceRange const & particles,
+  evaluate(ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &traits) const override {
-    Utils::CylindricalHistogram<double, 1> histogram(n_bins(), limits());
+    using pos_type = Utils::Vector3d;
 
-    for (auto const &p : particles) {
-      histogram.update(Utils::transform_coordinate_cartesian_to_cylinder(
-          folded_position(traits.position(p), box_geo) -
-              transform_params->center(),
-          transform_params->axis(), transform_params->orientation()));
+    std::vector<pos_type> local_folded_positions;
+    local_folded_positions.reserve(local_particles.size());
+
+    for (auto const &p : local_particles) {
+      local_folded_positions.emplace_back(Utils::transform_coordinate_cartesian_to_cylinder(folded_position(traits.position(p), box_geo) - transform_params->center(), transform_params->axis(), transform_params->orientation()));
     }
 
-    histogram.normalize();
-    return histogram.get_histogram();
+    std::vector<std::vector<pos_type>> global_folded_positions;
+    boost::mpi::gather(comm_cart, local_folded_positions, global_folded_positions, 0);
+
+    if (comm_cart.rank() == 0) {
+      Utils::CylindricalHistogram<double, 1> histogram(n_bins(), limits());
+
+      for (auto const &vec : global_folded_positions) {
+        for (auto const &p : vec) {
+          histogram.update(p);
+        }
+      }
+
+      histogram.normalize();
+      return histogram.get_histogram();
+    } else {
+      return {};
+    }
   }
 };
 
