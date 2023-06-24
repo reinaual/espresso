@@ -38,13 +38,32 @@ public:
   std::vector<double>
   evaluate(ParticleReferenceRange const & local_particles,
            const ParticleObservables::traits<Particle> &traits) const override {
-    Utils::Histogram<double, 1> histogram(n_bins(), limits());
+    // TODO: Implement a reduction of the histogram and build the histogram on all ranks
+    using pos_type = decltype(traits.position(std::declval<Particle>()));
 
-    for (auto p : local_particles) {
-      histogram.update(folded_position(traits.position(p), box_geo));
+    std::vector<pos_type> local_folded_positions;
+    local_folded_positions.reserve(local_particles.size());
+
+    for (auto const &p : local_particles) {
+      local_folded_positions.emplace_back(folded_position(traits.position(p), box_geo));
     }
-    histogram.normalize();
-    return histogram.get_histogram();
+
+    std::vector<std::vector<pos_type>> global_folded_positions;
+    boost::mpi::gather(comm_cart, local_folded_positions, global_folded_positions, 0);
+
+    if (comm_cart.rank() == 0) {
+      Utils::Histogram<double, 1> histogram(n_bins(), limits());
+
+      for (auto const &vec : global_folded_positions) {
+        for (auto const &p : vec) {
+          histogram.update(p);
+        }
+      }
+
+      histogram.normalize();
+      return histogram.get_histogram();
+    }
+    return {};
   }
 };
 } // Namespace Observables
