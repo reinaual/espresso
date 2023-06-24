@@ -36,11 +36,11 @@ public:
   using PidProfileObservable::PidProfileObservable;
 
   std::vector<double>
-  evaluate(ParticleReferenceRange const & particles,
+  evaluate(ParticleReferenceRange const & local_particles,
            const ParticleObservables::traits<Particle> &traits) const override {
     Utils::Histogram<double, 1> histogram(n_bins(), limits());
 
-    for (auto p : particles) {
+    for (auto p : local_particles) {
       histogram.update(folded_position(traits.position(p), box_geo));
     }
     histogram.normalize();

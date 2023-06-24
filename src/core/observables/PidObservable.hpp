@@ -58,7 +58,7 @@ class PidObservable : virtual public Observable {
   std::vector<int> m_ids;
 
   virtual std::vector<double>
-  evaluate(ParticleReferenceRange const &particles,
+  evaluate(ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &traits) const = 0;
 
 public:
@@ -157,13 +157,13 @@ public:
   struct is_map<ParticleObservables::Map<T>> : std::true_type {};
 
   std::vector<double>
-  evaluate(ParticleReferenceRange const &particles,
+  evaluate(ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &traits) const override {
     if constexpr (is_map<ObsType>::value) {
       std::vector<double> local_traits;
-      Utils::flatten(ObsType{}(particles), std::back_inserter(local_traits));
+      Utils::flatten(ObsType{}(local_particles), std::back_inserter(local_traits));
       std::vector<int> local_pids;
-      Utils::flatten(ParticleObservables::Identities{}(particles),
+      Utils::flatten(ParticleObservables::Identities{}(local_particles),
                      std::back_inserter(local_pids));
       auto const pid_begin = std::begin(local_pids);
       auto const pid_end = std::end(local_pids);
@@ -198,7 +198,7 @@ public:
         return {};
       }
     } else {
-      auto const local_result = ObsType{}(particles);
+      auto const local_result = ObsType{}(local_particles);
       std::remove_const_t<decltype(local_result)> result;
 
       boost::mpi::reduce(
