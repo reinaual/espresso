@@ -21,9 +21,11 @@
 #define FETCH_PARTICLES_HPP
 
 #include "grid.hpp"
+#include "particle_node.hpp"
 #include "cells.hpp"
 
 #include "PidObservable.hpp"
+#include <utils/Span.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -44,5 +46,37 @@ inline auto fetch_particles(std::vector<int> const &ids) {
 	       std::back_inserter(local_particle_refs),
 	       [&ids_set](Particle &p) { return ids_set.count(p.id()) != 0; });
   return local_particle_refs;
+}
+
+/** Fetch a group of particles.
+ *
+ *  @param ids particle identifiers
+ *  @return array of particle copies, with positions in the current box.
+ */
+inline std::vector<Particle> old_fetch_particles(std::vector<int> const &ids) {
+  std::vector<Particle> particles;
+  particles.reserve(ids.size());
+
+  auto const chunk_size = fetch_cache_max_size();
+  for (std::size_t offset = 0; offset < ids.size();) {
+    auto const this_size = std::clamp(chunk_size, std::size_t{0},
+                                      std::size_t{ids.size() - offset});
+    auto const chunk_ids =
+        Utils::make_const_span(ids.data() + offset, this_size);
+
+    prefetch_particle_data(chunk_ids);
+
+    for (auto id : chunk_ids) {
+      particles.push_back(get_particle_data(id));
+
+      auto &p = particles.back();
+      p.pos() += image_shift(p.image_box(), box_geo.length());
+      p.image_box() = {};
+    }
+
+    offset += this_size;
+  }
+
+  return particles;
 }
 #endif

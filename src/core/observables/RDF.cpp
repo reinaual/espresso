@@ -22,6 +22,8 @@
 #include "fetch_particles.hpp"
 #include "grid.hpp"
 
+#include "communication.hpp"
+
 #include <utils/Span.hpp>
 #include <utils/Vector.hpp>
 #include <utils/constants.hpp>
@@ -37,19 +39,23 @@
 
 namespace Observables {
 std::vector<double> RDF::operator()() const {
-  auto particles1 = fetch_particles(ids1());
+  if (comm_cart.rank() != 0) {
+    return {};
+  }
+
+  auto particles1 = old_fetch_particles(ids1());
   std::vector<const Particle *> particles_ptrs1(particles1.size());
   boost::transform(particles1, particles_ptrs1.begin(),
-                   [](auto const &p) { return std::addressof(p.get()); });
+                   [](auto const &p) { return std::addressof(p); });
 
   if (ids2().empty()) {
     return this->evaluate(particles_ptrs1, {});
   }
 
-  auto particles2 = fetch_particles(ids2());
+  auto particles2 = old_fetch_particles(ids2());
   std::vector<const Particle *> particles_ptrs2(particles2.size());
   boost::transform(particles2, particles_ptrs2.begin(),
-                   [](auto const &p) { return std::addressof(p.get()); });
+                   [](auto const &p) { return std::addressof(p); });
   return this->evaluate(particles_ptrs1, particles_ptrs2);
 }
 
