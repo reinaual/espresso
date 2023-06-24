@@ -23,9 +23,13 @@
 #include "CylindricalPidProfileObservable.hpp"
 #include "grid.hpp"
 
+#include "communication.hpp"
+
 #include <utils/Histogram.hpp>
 #include <utils/Span.hpp>
 #include <utils/math/coordinate_transformation.hpp>
+
+#include <boost/range/combine.hpp>
 
 #include <array>
 #include <cstddef>
@@ -38,18 +42,37 @@ public:
   using CylindricalPidProfileObservable::CylindricalPidProfileObservable;
 
   std::vector<double>
-  evaluate(ParticleReferenceRange const & particles,
+  evaluate(ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &traits) const override {
+    using pos_type = Utils::Vector3d;
+    using vel_type = Utils::Vector3d;
+
+    std::vector<pos_type> local_folded_positions;
+    local_folded_positions.reserve(local_particles.size());
+    std::vector<vel_type> local_velocities;
+    local_velocities.reserve(local_particles.size());
+
+    for (auto const &p : local_particles) {
+      auto const pos = folded_position(traits.position(p), box_geo) - transform_params->center();
+      local_folded_positions.emplace_back(Utils::transform_coordinate_cartesian_to_cylinder(pos, transform_params->axis(), transform_params->orientation()));
+      local_velocities.emplace_back(Utils::transform_vector_cartesian_to_cylinder(traits.velocity(p), transform_params->axis(), pos));
+    }
+
+    std::vector<std::vector<pos_type>> global_folded_positions;
+    std::vector<std::vector<vel_type>> global_velocities;
+    boost::mpi::gather(comm_cart, local_folded_positions, global_folded_positions, 0);
+    boost::mpi::gather(comm_cart, local_velocities, global_velocities, 0);
+
+    if (comm_cart.rank() != 0) {
+      return {};
+    }
+
     Utils::CylindricalHistogram<double, 3> histogram(n_bins(), limits());
 
-    for (auto p : particles) {
-      auto const pos = folded_position(traits.position(p), box_geo) -
-                       transform_params->center();
-      histogram.update(
-          Utils::transform_coordinate_cartesian_to_cylinder(
-              pos, transform_params->axis(), transform_params->orientation()),
-          Utils::transform_vector_cartesian_to_cylinder(
-              traits.velocity(p), transform_params->axis(), pos));
+    for (auto const &[pos_vec, vel_vec] : boost::combine(global_folded_positions, global_velocities)) {
+      for (auto const &[pos, vel] : boost::combine(pos_vec, vel_vec)) {
+        histogram.update(pos, vel);
+      }
     }
 
     auto hist_tmp = histogram.get_histogram();
@@ -61,6 +84,7 @@ public:
     }
     return hist_tmp;
   }
+  
   std::vector<std::size_t> shape() const override {
     auto const b = n_bins();
     return {b[0], b[1], b[2], 3};
