@@ -21,6 +21,9 @@
 
 #include "Observable.hpp"
 #include "pressure.hpp"
+
+#include "communication.hpp"
+
 #include <cstddef>
 #include <vector>
 
@@ -30,6 +33,9 @@ class PressureTensor : public Observable {
 public:
   std::vector<std::size_t> shape() const override { return {3, 3}; }
   std::vector<double> operator()() const override {
+    if (comm_cart.rank() != 0) {
+      return {};
+    }
     return mpi_observable_compute_pressure_tensor().as_vector();
   }
 };
