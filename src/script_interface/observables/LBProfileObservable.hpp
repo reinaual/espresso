@@ -91,7 +91,8 @@ public:
   }
 
   void do_construct(VariantMap const &params) override {
-    m_observable =
+    ObjectHandle::context()->parallel_try_catch([&]() {
+      m_observable =
         make_shared_from_args<CoreLBObs, double, double, double, double, double,
                               double, int, int, int, double, double, double,
                               double, double, double, bool>(
@@ -99,6 +100,7 @@ public:
             "sampling_offset_x", "sampling_offset_y", "sampling_offset_z",
             "n_x_bins", "n_y_bins", "n_z_bins", "min_x", "max_x", "min_y",
             "max_y", "min_z", "max_z", "allow_empty_bins");
+    });
   }
 
   Variant do_call_method(std::string const &method,
