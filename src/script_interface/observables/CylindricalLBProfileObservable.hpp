@@ -105,7 +105,8 @@ public:
   void do_construct(VariantMap const &params) override {
     set_from_args(m_transform_params, params, "transform_params");
 
-    if (m_transform_params)
+    if (m_transform_params) {
+      ObjectHandle::context()->parallel_try_catch([&]() {
       m_observable = std::make_shared<CoreCylLBObs>(
           m_transform_params->cyl_transform_params(),
           get_value_or<int>(params, "n_r_bins", 1),
@@ -118,6 +119,8 @@ public:
           get_value<double>(params, "min_z"),
           get_value<double>(params, "max_z"),
           get_value<double>(params, "sampling_density"));
+    });
+    }
   }
 
   Variant do_call_method(std::string const &method,
