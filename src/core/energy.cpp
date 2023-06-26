@@ -156,8 +156,4 @@ void calc_long_range_fields() {
   auto particles = cell_structure.local_particles();
   Dipoles::calc_long_range_field(particles);
 }
-
-REGISTER_CALLBACK(calc_long_range_fields)
-
-void mpi_calc_long_range_fields() { mpi_call_all(calc_long_range_fields); }
 #endif
