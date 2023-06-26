@@ -126,6 +126,52 @@ static auto get_argsort(boost::mpi::communicator const &comm,
   }
   return argsort;
 }
+
+/** Get the positions of all the particles in the system in the order
+ * specified by \a sorted_pids. Only the root process returns a vector
+ * of positions, all other processes return an empty vector.
+ * This requires several MPI communications to construct.
+*/
+static auto get_all_particle_positions(boost::mpi::communicator const &comm,
+                                        ParticleReferenceRange const &local_particles,
+                                        std::vector<int> const &sorted_pids,
+                                        const ParticleObservables::traits<Particle> &traits) {
+  using pos_type = decltype(traits.position(std::declval<Particle>()));
+  std::vector<pos_type> local_positions;
+  local_positions.reserve(local_particles.size());
+  std::vector<int> local_pids;
+  local_pids.reserve(local_particles.size());
+  
+  for (auto const &particle : local_particles) {
+    local_positions.emplace_back(traits.position(particle));
+    local_pids.emplace_back(traits.id(particle));
+  }
+
+  auto const argsort = detail::get_argsort(comm_cart, local_pids, sorted_pids);
+
+  std::vector<std::vector<pos_type>> global_positions;
+  boost::mpi::gather(comm_cart, local_positions, global_positions, 0);
+
+  if (comm_cart.rank() != 0) {
+    return std::vector<pos_type>();
+  }
+
+  std::vector<pos_type> global_positions_flattened;
+  global_positions_flattened.reserve(sorted_pids.size());
+  for (auto const &vec : global_positions) {
+    for (auto const &pos : vec) {
+      global_positions_flattened.emplace_back(std::move(pos));
+    }
+  }
+
+  std::vector<pos_type> positions_sorted;
+  positions_sorted.reserve(sorted_pids.size());
+  for (auto const i : argsort) {
+    positions_sorted.emplace_back(global_positions_flattened[i]);
+  }
+
+  return positions_sorted;
+}
 } // namespace detail
 
 /**
