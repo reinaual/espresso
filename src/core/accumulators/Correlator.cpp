@@ -315,13 +315,24 @@ void Correlator::update(boost::mpi::communicator const &comm) {
     throw std::runtime_error(
         "No data can be added after finalize() was called.");
   }
+
+  if (comm.rank() != 0) {
+    // slaves just need to update the observables and exit
+    A_obs->operator()(comm);
+    if (A_obs != B_obs) {
+      B_obs->operator()(comm);
+    }
+
+    return;
+  }
+
   // We must now go through the hierarchy and make sure there is space for the
   // new datapoint. For every hierarchy level we have to decide if it is
   // necessary to move something
   int highest_level_to_compress = -1;
 
   t++;
-
+  
   // Let's find out how far we have to go back in the hierarchy to make space
   // for the new value
   {
@@ -411,7 +422,7 @@ void Correlator::update(boost::mpi::communicator const &comm) {
   }
 }
 
-int Correlator::finalize() {
+int Correlator::finalize(boost::mpi::communicator const &comm) {
   using index_type = decltype(result)::index;
   if (finalized) {
     throw std::runtime_error("Correlator::finalize() can only be called once.");
@@ -422,6 +433,11 @@ int Correlator::finalize() {
 
   // mark the correlation as finalized
   finalized = true;
+
+  // slaves don't need to do anything
+  if (comm.rank() != 0) {
+    return 0;
+  }
 
   for (int ll = 0; ll < m_hierarchy_depth - 1; ll++) {
     long vals_ll; // number of values remaining in the lowest level

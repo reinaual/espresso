@@ -182,7 +182,7 @@ public:
   /** At the end of data collection, go through the whole hierarchy and
    *  correlate data left there.
    */
-  int finalize();
+  int finalize(boost::mpi::communicator const &comm);
 
   /** Return correlation result */
   std::vector<double> get_correlation();

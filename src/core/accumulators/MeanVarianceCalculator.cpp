@@ -33,7 +33,11 @@
 
 namespace Accumulators {
 void MeanVarianceCalculator::update(boost::mpi::communicator const &comm) {
-  m_acc(m_obs->operator()(comm));
+  if (comm.rank() == 0) {
+    m_acc(m_obs->operator()(comm));
+  } else {
+    m_obs->operator()(comm);
+  }
 }
 
 std::vector<double> MeanVarianceCalculator::mean() { return m_acc.mean(); }
