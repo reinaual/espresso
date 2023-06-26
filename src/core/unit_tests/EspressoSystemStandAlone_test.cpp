@@ -130,12 +130,12 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     for (int i = 0; i < 5; ++i) {
       set_particle_v(pid2, {static_cast<double>(i), 0., 0.});
 
-      acc.update();
+      acc.update(comm);
       auto const time_series = acc.time_series();
       BOOST_REQUIRE_EQUAL(time_series.size(), i + 1);
 
       auto const acc_value = time_series.back();
-      auto const obs_value = (*obs)();
+      auto const obs_value = (*obs)(comm);
       auto const &p = get_particle_data(pid2);
       BOOST_TEST(obs_value == p.v(), boost::test_tools::per_element());
       BOOST_TEST(acc_value == p.v(), boost::test_tools::per_element());
