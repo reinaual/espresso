@@ -22,8 +22,6 @@
 #include "Observable.hpp"
 #include "grid_based_algorithms/lb_interface.hpp"
 
-#include "communication.hpp"
-
 #include <utils/math/sqr.hpp>
 
 #include <cstddef>
@@ -33,8 +31,9 @@ namespace Observables {
 class LBFluidPressureTensor : public Observable {
 public:
   std::vector<std::size_t> shape() const override { return {3, 3}; }
-  std::vector<double> operator()() const override {
-    if (comm_cart.rank() != 0) {
+  std::vector<double>
+  operator()(boost::mpi::communicator const &comm) const override {
+    if (comm.rank() != 0) {
       return {};
     }
     auto const unit_conversion =

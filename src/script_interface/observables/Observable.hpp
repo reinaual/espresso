@@ -41,7 +41,7 @@ public:
   Variant do_call_method(std::string const &method,
                          VariantMap const &parameters) override {
     if (method == "calculate") {
-      return observable()->operator()();
+      return observable()->operator()(context()->get_comm());
     }
     if (method == "shape") {
       auto const shape = observable()->shape();

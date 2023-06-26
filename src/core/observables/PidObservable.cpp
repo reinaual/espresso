@@ -25,9 +25,10 @@
 #include <vector>
 
 namespace Observables {
-std::vector<double> PidObservable::operator()() const {
+std::vector<double>
+PidObservable::operator()(boost::mpi::communicator const &comm) const {
   auto const &local_particles = fetch_particles(ids());
-  return this->evaluate(local_particles,
+  return this->evaluate(comm, local_particles,
                         ParticleObservables::traits<Particle>{});
 }
 } // namespace Observables

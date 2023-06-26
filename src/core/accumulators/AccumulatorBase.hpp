@@ -19,6 +19,8 @@
 #ifndef CORE_ACCUMULATORS_ACCUMULATOR_BASE_HPP
 #define CORE_ACCUMULATORS_ACCUMULATOR_BASE_HPP
 
+#include "observables/Observable.hpp"
+
 #include <cstddef>
 #include <vector>
 
@@ -31,7 +33,7 @@ public:
 
   int &delta_N() { return m_delta_N; }
 
-  virtual void update() = 0;
+  virtual void update(boost::mpi::communicator const &comm) = 0;
   /** Dimensions needed to reshape the flat array returned by the accumulator */
   virtual std::vector<std::size_t> shape() const = 0;
 

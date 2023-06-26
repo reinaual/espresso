@@ -23,8 +23,6 @@
 #include "PidObservable.hpp"
 #include "grid.hpp"
 
-#include "communication.hpp"
-
 #include <utils/Span.hpp>
 #include <utils/Vector.hpp>
 
@@ -51,12 +49,14 @@ public:
   }
 
   std::vector<double>
-  evaluate(ParticleReferenceRange const &local_particles,
+  evaluate(boost::mpi::communicator const &comm,
+           ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &traits) const override {
-    
-    auto const positions_sorted = detail::get_all_particle_positions(comm_cart, local_particles, ids(), traits);
 
-    if (comm_cart.rank() != 0) {
+    auto const positions_sorted = detail::get_all_particle_positions(
+        comm, local_particles, ids(), traits);
+
+    if (comm.rank() != 0) {
       return {};
     }
 

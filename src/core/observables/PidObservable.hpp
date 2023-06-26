@@ -58,12 +58,14 @@ class PidObservable : virtual public Observable {
   std::vector<int> m_ids;
 
   virtual std::vector<double>
-  evaluate(ParticleReferenceRange const &local_particles,
+  evaluate(boost::mpi::communicator const &comm,
+           ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &traits) const = 0;
 
 public:
   explicit PidObservable(std::vector<int> ids) : m_ids(std::move(ids)) {}
-  std::vector<double> operator()() const final;
+  std::vector<double>
+  operator()(boost::mpi::communicator const &comm) const final;
   std::vector<int> const &ids() const { return m_ids; }
 };
 
@@ -131,17 +133,18 @@ static auto get_argsort(boost::mpi::communicator const &comm,
  * specified by \a sorted_pids. Only the root process returns a vector
  * of positions, all other processes return an empty vector.
  * This requires several MPI communications to construct.
-*/
-static auto get_all_particle_positions(boost::mpi::communicator const &comm,
-                                        ParticleReferenceRange const &local_particles,
-                                        std::vector<int> const &sorted_pids,
-                                        const ParticleObservables::traits<Particle> &traits) {
+ */
+static auto get_all_particle_positions(
+    boost::mpi::communicator const &comm,
+    ParticleReferenceRange const &local_particles,
+    std::vector<int> const &sorted_pids,
+    const ParticleObservables::traits<Particle> &traits) {
   using pos_type = decltype(traits.position(std::declval<Particle>()));
   std::vector<pos_type> local_positions;
   local_positions.reserve(local_particles.size());
   std::vector<int> local_pids;
   local_pids.reserve(local_particles.size());
-  
+
   for (auto const &particle : local_particles) {
     local_positions.emplace_back(traits.position(particle));
     local_pids.emplace_back(traits.id(particle));
@@ -203,11 +206,13 @@ public:
   struct is_map<ParticleObservables::Map<T>> : std::true_type {};
 
   std::vector<double>
-  evaluate(ParticleReferenceRange const &local_particles,
+  evaluate(boost::mpi::communicator const &comm,
+           ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &traits) const override {
     if constexpr (is_map<ObsType>::value) {
       std::vector<double> local_traits;
-      Utils::flatten(ObsType{}(local_particles), std::back_inserter(local_traits));
+      Utils::flatten(ObsType{}(local_particles),
+                     std::back_inserter(local_traits));
       std::vector<int> local_pids;
       Utils::flatten(ParticleObservables::Identities{}(local_particles),
                      std::back_inserter(local_pids));
@@ -217,11 +222,11 @@ public:
       auto const n_dims = local_traits.size() / local_pids.size();
 
       std::vector<std::vector<double>> global_traits;
-      boost::mpi::gather(comm_cart, local_traits, global_traits, 0);
+      boost::mpi::gather(comm, local_traits, global_traits, 0);
 
-      auto const argsort = detail::get_argsort(comm_cart, local_pids, ids());
+      auto const argsort = detail::get_argsort(comm, local_pids, ids());
 
-      if (comm_cart.rank() == 0) {
+      if (comm.rank() == 0) {
         std::vector<double> global_traits_flattened;
         global_traits_flattened.reserve(ids().size() * n_dims);
 
@@ -248,20 +253,22 @@ public:
 
       using result_type = std::remove_const_t<decltype(local_result)>;
 
-      // this is a hack around the fact that boost::mpi::reduce segfaults on this operation
+      // this is a hack around the fact that boost::mpi::reduce segfaults on
+      // this operation
       std::vector<result_type> global_results;
-      boost::mpi::gather(comm_cart, local_result, global_results, 0);
+      boost::mpi::gather(comm, local_result, global_results, 0);
 
-      if (comm_cart.rank() != 0) {
+      if (comm.rank() != 0) {
         return {};
       }
 
       result_type result{};
-      result = std::accumulate(std::begin(global_results),
-                                std::end(global_results), result, ObsType::template reduction<result_type>);
+      result =
+          std::accumulate(std::begin(global_results), std::end(global_results),
+                          result, ObsType::template reduction<result_type>);
 
       // this seg-faults on rank 0.... no idea why
-      // boost::mpi::reduce(comm_cart, local_result, result, reduction_op, 0);
+      // boost::mpi::reduce(comm, local_result, result, reduction_op, 0);
 
       return result.first;
     }

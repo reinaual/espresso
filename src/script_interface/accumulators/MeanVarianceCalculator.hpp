@@ -59,7 +59,7 @@ public:
   Variant do_call_method(std::string const &method,
                          VariantMap const &parameters) override {
     if (method == "update")
-      mean_variance_calculator()->update();
+      mean_variance_calculator()->update(context()->get_comm());
     if (method == "mean")
       return mean_variance_calculator()->mean();
     if (method == "variance")

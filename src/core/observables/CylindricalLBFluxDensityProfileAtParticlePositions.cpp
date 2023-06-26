@@ -22,8 +22,6 @@
 #include "grid.hpp"
 #include "grid_based_algorithms/lb_interface.hpp"
 
-#include "communication.hpp"
-
 #include <utils/Histogram.hpp>
 #include <utils/Span.hpp>
 #include <utils/math/coordinate_transformation.hpp>
@@ -35,6 +33,7 @@
 namespace Observables {
 std::vector<double>
 CylindricalLBFluxDensityProfileAtParticlePositions::evaluate(
+    boost::mpi::communicator const &comm,
     ParticleReferenceRange const &local_particles,
     const ParticleObservables::traits<Particle> &traits) const {
   using pos_type = decltype(traits.position(std::declval<Particle>()));
@@ -43,13 +42,14 @@ CylindricalLBFluxDensityProfileAtParticlePositions::evaluate(
   local_folded_positions.reserve(local_particles.size());
 
   for (auto const &p : local_particles) {
-    local_folded_positions.emplace_back(folded_position(traits.position(p), box_geo));
+    local_folded_positions.emplace_back(
+        folded_position(traits.position(p), box_geo));
   }
 
   std::vector<std::vector<pos_type>> global_folded_positions;
-  boost::mpi::gather(comm_cart, local_folded_positions, global_folded_positions, 0);
+  boost::mpi::gather(comm, local_folded_positions, global_folded_positions, 0);
 
-  if (comm_cart.rank() != 0) {
+  if (comm.rank() != 0) {
     return {};
   }
 
@@ -59,16 +59,17 @@ CylindricalLBFluxDensityProfileAtParticlePositions::evaluate(
 
   for (auto const &pos_vec : global_folded_positions) {
     for (auto const &pos : pos_vec) {
-      auto const v = LB::get_interpolated_velocity(pos) * LB::get_lattice_speed();
+      auto const v =
+          LB::get_interpolated_velocity(pos) * LB::get_lattice_speed();
       auto const flux_dens = LB::get_interpolated_density(pos) * v;
 
       histogram.update(Utils::transform_coordinate_cartesian_to_cylinder(
-                          pos - transform_params->center(),
-                          transform_params->axis(),
-                          transform_params->orientation()),
-                      Utils::transform_vector_cartesian_to_cylinder(
-                          flux_dens, transform_params->axis(),
-                          pos - transform_params->center()));
+                           pos - transform_params->center(),
+                           transform_params->axis(),
+                           transform_params->orientation()),
+                       Utils::transform_vector_cartesian_to_cylinder(
+                           flux_dens, transform_params->axis(),
+                           pos - transform_params->center()));
     }
   }
 

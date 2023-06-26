@@ -81,7 +81,7 @@ public:
   Variant do_call_method(std::string const &method,
                          VariantMap const &parameters) override {
     if (method == "update")
-      correlator()->update();
+      correlator()->update(context()->get_comm());
     if (method == "finalize")
       correlator()->finalize();
     if (method == "get_correlation")

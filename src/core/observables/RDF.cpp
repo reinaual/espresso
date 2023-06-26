@@ -22,8 +22,6 @@
 #include "fetch_particles.hpp"
 #include "grid.hpp"
 
-#include "communication.hpp"
-
 #include <utils/Span.hpp>
 #include <utils/Vector.hpp>
 #include <utils/constants.hpp>
@@ -38,8 +36,9 @@
 #include <vector>
 
 namespace Observables {
-std::vector<double> RDF::operator()() const {
-  if (comm_cart.rank() != 0) {
+std::vector<double>
+RDF::operator()(boost::mpi::communicator const &comm) const {
+  if (comm.rank() != 0) {
     return {};
   }
 
@@ -49,18 +48,19 @@ std::vector<double> RDF::operator()() const {
                    [](auto const &p) { return std::addressof(p); });
 
   if (ids2().empty()) {
-    return this->evaluate(particles_ptrs1, {});
+    return this->evaluate(comm, particles_ptrs1, {});
   }
 
   auto particles2 = old_fetch_particles(ids2());
   std::vector<const Particle *> particles_ptrs2(particles2.size());
   boost::transform(particles2, particles_ptrs2.begin(),
                    [](auto const &p) { return std::addressof(p); });
-  return this->evaluate(particles_ptrs1, particles_ptrs2);
+  return this->evaluate(comm, particles_ptrs1, particles_ptrs2);
 }
 
 std::vector<double>
-RDF::evaluate(Utils::Span<const Particle *const> particles1,
+RDF::evaluate(boost::mpi::communicator const &comm,
+              Utils::Span<const Particle *const> particles1,
               Utils::Span<const Particle *const> particles2) const {
   auto const bin_width = (max_r - min_r) / static_cast<double>(n_r_bins);
   auto const inv_bin_width = 1.0 / bin_width;

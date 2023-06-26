@@ -41,7 +41,8 @@ class RDF : public Observable {
   std::vector<int> m_ids2;
 
   virtual std::vector<double>
-  evaluate(Utils::Span<const Particle *const> particles1,
+  evaluate(boost::mpi::communicator const &comm,
+           Utils::Span<const Particle *const> particles1,
            Utils::Span<const Particle *const> particles2) const;
 
 public:
@@ -61,7 +62,8 @@ public:
     if (n_r_bins <= 0)
       throw std::domain_error("n_r_bins has to be >= 1");
   }
-  std::vector<double> operator()() const final;
+  std::vector<double>
+  operator()(boost::mpi::communicator const &comm) const final;
 
   std::vector<int> &ids1() { return m_ids1; }
   std::vector<int> &ids2() { return m_ids2; }

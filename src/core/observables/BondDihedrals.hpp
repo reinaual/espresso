@@ -23,8 +23,6 @@
 #include "PidObservable.hpp"
 #include "grid.hpp"
 
-#include "communication.hpp"
-
 #include <utils/Span.hpp>
 #include <utils/Vector.hpp>
 
@@ -55,19 +53,19 @@ public:
   }
 
   std::vector<double>
-  evaluate(ParticleReferenceRange const &local_particles,
+  evaluate(boost::mpi::communicator const &comm,
+           ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &traits) const override {
-    auto const positions_sorted = detail::get_all_particle_positions(comm_cart, local_particles, ids(), traits);
+    auto const positions_sorted = detail::get_all_particle_positions(
+        comm, local_particles, ids(), traits);
 
-    if (comm_cart.rank() != 0) {
+    if (comm.rank() != 0) {
       return {};
     }
-    
+
     std::vector<double> res(n_values());
-    auto v1 = box_geo.get_mi_vector(positions_sorted[1],
-                                    positions_sorted[0]);
-    auto v2 = box_geo.get_mi_vector(positions_sorted[2],
-                                    positions_sorted[1]);
+    auto v1 = box_geo.get_mi_vector(positions_sorted[1], positions_sorted[0]);
+    auto v2 = box_geo.get_mi_vector(positions_sorted[2], positions_sorted[1]);
     auto c1 = Utils::vector_product(v1, v2);
     for (std::size_t i = 0, end = n_values(); i < end; i++) {
       auto v3 = box_geo.get_mi_vector(positions_sorted[i + 3],

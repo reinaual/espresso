@@ -22,8 +22,6 @@
 #include "grid.hpp"
 #include "grid_based_algorithms/lb_interface.hpp"
 
-#include "communication.hpp"
-
 #include <utils/Histogram.hpp>
 #include <utils/Span.hpp>
 #include <utils/math/coordinate_transformation.hpp>
@@ -33,21 +31,23 @@
 
 namespace Observables {
 std::vector<double> CylindricalLBVelocityProfileAtParticlePositions::evaluate(
+    boost::mpi::communicator const &comm,
     ParticleReferenceRange const &local_particles,
-    const ParticleObservables::traits<Particle> &traits) const{
+    const ParticleObservables::traits<Particle> &traits) const {
   using pos_type = Utils::Vector3d;
 
   std::vector<pos_type> local_folded_positions;
   local_folded_positions.reserve(local_particles.size());
 
   for (auto const &p : local_particles) {
-    local_folded_positions.emplace_back(folded_position(traits.position(p), box_geo));
+    local_folded_positions.emplace_back(
+        folded_position(traits.position(p), box_geo));
   }
 
   std::vector<std::vector<pos_type>> global_folded_positions;
-  boost::mpi::gather(comm_cart, local_folded_positions, global_folded_positions, 0);
-  
-  if (comm_cart.rank() != 0) {
+  boost::mpi::gather(comm, local_folded_positions, global_folded_positions, 0);
+
+  if (comm.rank() != 0) {
     return {};
   }
 
@@ -55,7 +55,8 @@ std::vector<double> CylindricalLBVelocityProfileAtParticlePositions::evaluate(
 
   for (auto const &vec : global_folded_positions) {
     for (auto const &pos : vec) {
-      auto const v = LB::get_interpolated_velocity(pos) * LB::get_lattice_speed();
+      auto const v =
+          LB::get_interpolated_velocity(pos) * LB::get_lattice_speed();
 
       histogram.update(
           Utils::transform_coordinate_cartesian_to_cylinder(

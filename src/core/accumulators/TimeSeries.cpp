@@ -28,7 +28,9 @@
 #include <string>
 
 namespace Accumulators {
-void TimeSeries::update() { m_data.emplace_back(m_obs->operator()()); }
+void TimeSeries::update(boost::mpi::communicator const &comm) {
+  m_data.emplace_back(m_obs->operator()(comm));
+}
 
 std::string TimeSeries::get_internal_state() const {
   std::stringstream ss;

@@ -310,7 +310,7 @@ void Correlator::initialize() {
   }
 }
 
-void Correlator::update() {
+void Correlator::update(boost::mpi::communicator const &comm) {
   if (finalized) {
     throw std::runtime_error(
         "No data can be added after finalize() was called.");
@@ -360,9 +360,9 @@ void Correlator::update() {
   newest[0] = (newest[0] + 1) % (m_tau_lin + 1);
   n_vals[0]++;
 
-  A[0][newest[0]] = A_obs->operator()();
+  A[0][newest[0]] = A_obs->operator()(comm);
   if (A_obs != B_obs) {
-    B[0][newest[0]] = B_obs->operator()();
+    B[0][newest[0]] = B_obs->operator()(comm);
   } else {
     B[0][newest[0]] = A[0][newest[0]];
   }

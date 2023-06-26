@@ -24,8 +24,6 @@
 #include "PidProfileObservable.hpp"
 #include "grid.hpp"
 
-#include "communication.hpp"
-
 #include <utils/Histogram.hpp>
 
 #include <boost/range/combine.hpp>
@@ -45,7 +43,8 @@ public:
   }
 
   std::vector<double>
-  evaluate(ParticleReferenceRange const &local_particles,
+  evaluate(boost::mpi::communicator const &comm,
+           ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &traits) const override {
     using pos_type = decltype(traits.position(std::declval<Particle>()));
     using force_type = decltype(traits.force(std::declval<Particle>()));
@@ -56,22 +55,25 @@ public:
     local_forces.reserve(local_particles.size());
 
     for (auto const &p : local_particles) {
-      local_folded_positions.emplace_back(folded_position(traits.position(p), box_geo));
+      local_folded_positions.emplace_back(
+          folded_position(traits.position(p), box_geo));
       local_forces.emplace_back(traits.force(p));
     }
 
     std::vector<std::vector<pos_type>> global_folded_positions;
     std::vector<std::vector<force_type>> global_forces;
-    boost::mpi::gather(comm_cart, local_folded_positions, global_folded_positions, 0);
-    boost::mpi::gather(comm_cart, local_forces, global_forces, 0);
+    boost::mpi::gather(comm, local_folded_positions, global_folded_positions,
+                       0);
+    boost::mpi::gather(comm, local_forces, global_forces, 0);
 
-    if (comm_cart.rank() != 0) {
+    if (comm.rank() != 0) {
       return {};
     }
 
     Utils::Histogram<double, 3> histogram(n_bins(), limits());
 
-    for (auto const &[pos_vec, force_vec] : boost::combine(global_folded_positions, global_forces)) {
+    for (auto const &[pos_vec, force_vec] :
+         boost::combine(global_folded_positions, global_forces)) {
       for (auto const &[pos, force] : boost::combine(pos_vec, force_vec)) {
         histogram.update(pos, force);
       }

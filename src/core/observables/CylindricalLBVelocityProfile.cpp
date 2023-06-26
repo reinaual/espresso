@@ -21,8 +21,6 @@
 
 #include "grid_based_algorithms/lb_interface.hpp"
 
-#include "communication.hpp"
-
 #include <utils/Histogram.hpp>
 #include <utils/math/coordinate_transformation.hpp>
 
@@ -32,27 +30,28 @@
 
 namespace Observables {
 
-std::vector<double> CylindricalLBVelocityProfile::operator()() const {
-  if (comm_cart.rank() == 0) {
-    Utils::CylindricalHistogram<double, 3> histogram(n_bins(), limits());
-    for (auto const &p : sampling_positions) {
-      auto const velocity =
-          LB::get_interpolated_velocity(p) * LB::get_lattice_speed();
-      auto const pos_shifted = p - transform_params->center();
-      auto const pos_cyl = Utils::transform_coordinate_cartesian_to_cylinder(
-          pos_shifted, transform_params->axis(), transform_params->orientation());
-      histogram.update(pos_cyl,
-                      Utils::transform_vector_cartesian_to_cylinder(
-                          velocity, transform_params->axis(), pos_shifted));
-    }
-    auto hist_data = histogram.get_histogram();
-    auto const tot_count = histogram.get_tot_count();
-    std::transform(hist_data.begin(), hist_data.end(), tot_count.begin(),
-                  hist_data.begin(), std::divides<double>());
-    return hist_data;
+std::vector<double> CylindricalLBVelocityProfile::operator()(
+    boost::mpi::communicator const &comm) const {
+  if (comm.rank() != 0) {
+    return {};
   }
 
-  return {};
+  Utils::CylindricalHistogram<double, 3> histogram(n_bins(), limits());
+  for (auto const &p : sampling_positions) {
+    auto const velocity =
+        LB::get_interpolated_velocity(p) * LB::get_lattice_speed();
+    auto const pos_shifted = p - transform_params->center();
+    auto const pos_cyl = Utils::transform_coordinate_cartesian_to_cylinder(
+        pos_shifted, transform_params->axis(), transform_params->orientation());
+    histogram.update(pos_cyl,
+                     Utils::transform_vector_cartesian_to_cylinder(
+                         velocity, transform_params->axis(), pos_shifted));
+  }
+  auto hist_data = histogram.get_histogram();
+  auto const tot_count = histogram.get_tot_count();
+  std::transform(hist_data.begin(), hist_data.end(), tot_count.begin(),
+                 hist_data.begin(), std::divides<double>());
+  return hist_data;
 }
 
 } // namespace Observables

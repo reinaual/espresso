@@ -502,11 +502,6 @@ int integrate_with_signal_handler(int n_steps, int reuse_forces,
     ::set_skin(new_skin);
   }
 
-  // re-acquire MpiCallbacks listener on worker nodes
-  if (not is_head_node) {
-    return 0;
-  }
-
   using Accumulators::auto_update;
   using Accumulators::auto_update_next_update;
 
@@ -514,15 +509,20 @@ int integrate_with_signal_handler(int n_steps, int reuse_forces,
     /* Integrate to either the next accumulator update, or the
      * end, depending on what comes first. */
     auto const steps = std::min((n_steps - i), auto_update_next_update());
-    auto const retval = mpi_call(Communication::Result::main_rank, integrate,
-                                 steps, reuse_forces);
-    if (retval < 0) {
-      return retval; // propagate error code
+    auto const local_retval = integrate(steps, reuse_forces);
+
+    // reduction of the error-code, can be removed when integrate is run in
+    // parallel
+    std::remove_const_t<decltype(local_retval)> global_retval;
+    boost::mpi::all_reduce(comm_cart, local_retval, global_retval,
+                           std::plus<int>());
+    if (global_retval < 0) {
+      return global_retval; // propagate error code
     }
 
     reuse_forces = INTEG_REUSE_FORCES_ALWAYS;
 
-    auto_update(steps);
+    auto_update(comm_cart, steps);
 
     i += steps;
   }

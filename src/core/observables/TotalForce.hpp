@@ -21,8 +21,6 @@
 
 #include "PidObservable.hpp"
 
-#include "communication.hpp"
-
 #include <boost/mpi/collectives/reduce.hpp>
 
 #include <cstddef>
@@ -35,7 +33,8 @@ public:
   std::vector<std::size_t> shape() const override { return {3}; }
 
   std::vector<double>
-  evaluate(ParticleReferenceRange const &local_particles,
+  evaluate(boost::mpi::communicator const &comm,
+           ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &) const override {
     Utils::Vector3d local_force{};
     for (auto const &p : local_particles) {
@@ -45,7 +44,7 @@ public:
     }
 
     decltype(local_force) global_force;
-    boost::mpi::reduce(comm_cart, local_force, global_force, std::plus<>(), 0);
+    boost::mpi::reduce(comm, local_force, global_force, std::plus<>(), 0);
 
     return global_force.as_vector();
   }
