@@ -199,13 +199,23 @@ public:
       }
     } else {
       auto const local_result = ObsType{}(local_particles);
-      std::remove_const_t<decltype(local_result)> result;
 
-      boost::mpi::reduce(
-          comm_cart, local_result, result,
-          ObsType::template reduction<decltype(std::declval<ObsType>()(
-              std::declval<ParticleReferenceRange const &>()))>,
-          0);
+      using result_type = std::remove_const_t<decltype(local_result)>;
+
+      // this is a hack around the fact that boost::mpi::reduce segfaults on this operation
+      std::vector<result_type> global_results;
+      boost::mpi::gather(comm_cart, local_result, global_results, 0);
+
+      if (comm_cart.rank() != 0) {
+        return {};
+      }
+
+      result_type result{};
+      result = std::accumulate(std::begin(global_results),
+                                std::end(global_results), result, ObsType::template reduction<result_type>);
+
+      // this seg-faults on rank 0.... no idea why
+      // boost::mpi::reduce(comm_cart, local_result, result, reduction_op, 0);
 
       return result.first;
     }
