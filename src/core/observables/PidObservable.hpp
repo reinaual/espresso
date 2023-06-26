@@ -219,35 +219,40 @@ public:
       auto const pid_begin = std::begin(local_pids);
       auto const pid_end = std::end(local_pids);
 
-      auto const n_dims = local_traits.size() / local_pids.size();
-
       std::vector<std::vector<double>> global_traits;
       boost::mpi::gather(comm, local_traits, global_traits, 0);
 
       auto const argsort = detail::get_argsort(comm, local_pids, ids());
 
-      if (comm.rank() == 0) {
-        std::vector<double> global_traits_flattened;
-        global_traits_flattened.reserve(ids().size() * n_dims);
-
-        for (auto &vec : global_traits) {
-          for (auto const val : vec) {
-            global_traits_flattened.emplace_back(val);
-          }
-        }
-
-        std::vector<double> output;
-        output.reserve(n_dims * ids().size());
-
-        for (auto const i : argsort) {
-          for (std::size_t j = 0; j < n_dims; ++j) {
-            output.emplace_back(global_traits_flattened[i * n_dims + j]);
-          }
-        }
-        return output;
-      } else {
+      if (comm.rank() != 0) {
         return {};
       }
+
+      // get total size of the global traits vector
+      auto const size = std::accumulate(
+          global_traits.begin(), global_traits.end(), 0u,
+          [](auto const acc, auto const &vec) { return acc + vec.size(); });
+
+      auto const n_dims = size / ids().size();
+
+      std::vector<double> global_traits_flattened;
+      global_traits_flattened.reserve(size);
+
+      for (auto &vec : global_traits) {
+        for (auto const val : vec) {
+          global_traits_flattened.emplace_back(val);
+        }
+      }
+
+      std::vector<double> output;
+      output.reserve(size);
+
+      for (auto const i : argsort) {
+        for (std::size_t j = 0; j < n_dims; ++j) {
+          output.emplace_back(global_traits_flattened[i * n_dims + j]);
+        }
+      }
+      return output;
     } else {
       auto const local_result = ObsType{}(local_particles);
 
