@@ -29,7 +29,11 @@
 
 namespace Accumulators {
 void TimeSeries::update(boost::mpi::communicator const &comm) {
-  m_data.emplace_back(m_obs->operator()(comm));
+  if (comm.rank() == 0) {
+    m_data.emplace_back(m_obs->operator()(comm));
+  } else {
+    m_obs->operator()(comm);
+  }
 }
 
 std::string TimeSeries::get_internal_state() const {
