@@ -34,6 +34,13 @@
 
 #include <utils/Vector.hpp>
 
+// Forward declaration
+namespace boost {
+namespace mpi {
+class communicator;
+}
+} // namespace boost
+
 struct IA_parameters;
 
 void dpd_init(double kT, double time_step);
@@ -42,7 +49,7 @@ Utils::Vector3d dpd_pair_force(Particle const &p1, Particle const &p2,
                                IA_parameters const &ia_params,
                                Utils::Vector3d const &d, double dist,
                                double dist2);
-Utils::Vector9d dpd_stress();
+Utils::Vector9d dpd_stress(boost::mpi::communicator const &comm);
 
 #endif // DPD
 #endif
