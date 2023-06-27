@@ -36,9 +36,6 @@ std::shared_ptr<Observable_stat> calculate_energy();
 /** Calculate the total energy of the system. */
 double mpi_calculate_potential_energy();
 
-/** Helper function for @ref Observables::Energy. */
-double mpi_observable_compute_energy();
-
 /**
  * @brief Compute short-range energy of a particle.
  *

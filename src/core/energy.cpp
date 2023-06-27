@@ -120,11 +120,6 @@ double mpi_calculate_potential_energy() {
   return obs->accumulate(-obs->kinetic[0]);
 }
 
-double mpi_observable_compute_energy() {
-  auto const obs = mpi_call(Communication::Result::main_rank, calculate_energy);
-  return obs->accumulate(0);
-}
-
 double particle_short_range_energy_contribution(int pid) {
   double ret = 0.0;
 

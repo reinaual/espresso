@@ -32,13 +32,7 @@ public:
   std::vector<std::size_t> shape() const override { return {1}; }
   std::vector<double>
   operator()(boost::mpi::communicator const &comm) const override {
-    if (comm.rank() != 0) {
-      return {};
-    }
-
-    std::vector<double> res{1};
-    res[0] = mpi_observable_compute_energy();
-    return res;
+    return {calculate_energy()->accumulate(0)};
   }
 };
 
