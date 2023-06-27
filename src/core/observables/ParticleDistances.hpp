@@ -49,7 +49,7 @@ public:
            ParticleReferenceRange const &local_particles,
            const ParticleObservables::traits<Particle> &traits) const override {
     auto const positions_sorted = detail::get_all_particle_positions(
-        comm, local_particles, ids(), traits);
+        comm, local_particles, ids(), traits, false);
 
     if (comm.rank() != 0) {
       return {};

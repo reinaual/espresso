@@ -134,11 +134,12 @@ static auto get_argsort(boost::mpi::communicator const &comm,
  * of positions, all other processes return an empty vector.
  * This requires several MPI communications to construct.
  */
-static auto get_all_particle_positions(
-    boost::mpi::communicator const &comm,
-    ParticleReferenceRange const &local_particles,
-    std::vector<int> const &sorted_pids,
-    const ParticleObservables::traits<Particle> &traits) {
+static auto
+get_all_particle_positions(boost::mpi::communicator const &comm,
+                           ParticleReferenceRange const &local_particles,
+                           std::vector<int> const &sorted_pids,
+                           const ParticleObservables::traits<Particle> &traits,
+                           bool use_folded_positions = false) {
   using pos_type = decltype(traits.position(std::declval<Particle>()));
   std::vector<pos_type> local_positions;
   local_positions.reserve(local_particles.size());
@@ -146,7 +147,11 @@ static auto get_all_particle_positions(
   local_pids.reserve(local_particles.size());
 
   for (auto const &particle : local_particles) {
-    local_positions.emplace_back(traits.position(particle));
+    if (use_folded_positions) {
+      local_positions.emplace_back(traits.position_folded(particle));
+    } else {
+      local_positions.emplace_back(traits.position(particle));
+    }
     local_pids.emplace_back(traits.id(particle));
   }
 
@@ -163,7 +168,7 @@ static auto get_all_particle_positions(
   global_positions_flattened.reserve(sorted_pids.size());
   for (auto const &vec : global_positions) {
     for (auto const &pos : vec) {
-      global_positions_flattened.emplace_back(std::move(pos));
+      global_positions_flattened.emplace_back(pos);
     }
   }
 
@@ -211,9 +216,11 @@ public:
            const ParticleObservables::traits<Particle> &traits) const override {
     if constexpr (is_map<ObsType>::value) {
       std::vector<double> local_traits;
+      local_traits.reserve(local_particles.size());
       Utils::flatten(ObsType{}(local_particles),
                      std::back_inserter(local_traits));
       std::vector<int> local_pids;
+      local_pids.reserve(local_particles.size());
       Utils::flatten(ParticleObservables::Identities{}(local_particles),
                      std::back_inserter(local_pids));
       auto const pid_begin = std::begin(local_pids);
@@ -238,7 +245,7 @@ public:
       std::vector<double> global_traits_flattened;
       global_traits_flattened.reserve(size);
 
-      for (auto &vec : global_traits) {
+      for (auto const &vec : global_traits) {
         for (auto const val : vec) {
           global_traits_flattened.emplace_back(val);
         }

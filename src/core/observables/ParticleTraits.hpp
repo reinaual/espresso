@@ -19,8 +19,10 @@
 #ifndef OBSERVABLES_PARTICLE_TRAITS
 #define OBSERVABLES_PARTICLE_TRAITS
 
+#include "BoxGeometry.hpp"
 #include "Particle.hpp"
 #include "config/config.hpp"
+#include "grid.hpp"
 #include "rotation.hpp"
 
 namespace ParticleObservables {
@@ -31,7 +33,10 @@ namespace ParticleObservables {
  */
 template <> struct traits<Particle> {
   auto id(Particle const &p) const { return p.id(); }
-  auto position(Particle const &p) const { return p.pos(); }
+  auto position(Particle const &p) const {
+    return unfolded_position(p.pos(), p.image_box(), box_geo.length());
+  }
+  auto position_folded(Particle const &p) const { return p.pos(); }
   auto velocity(Particle const &p) const { return p.v(); }
   auto force(Particle const &p) const { return p.force(); }
   auto mass(Particle const &p) const {

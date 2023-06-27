@@ -68,12 +68,13 @@ public:
     auto const comp2 = get_value_or<std::string>(args, "compress2", comp1);
 
     ObjectHandle::context()->parallel_try_catch([&]() {
-        m_correlator = std::make_shared<CoreCorr>(
-        get_value<int>(args, "tau_lin"), get_value<double>(args, "tau_max"),
-        get_value<int>(args, "delta_N"), comp1, comp2,
-        get_value<std::string>(args, "corr_operation"), m_obs1->observable(),
-        m_obs2->observable(), get_value_or<Utils::Vector3d>(args, "args", {}));
-      });
+      m_correlator = std::make_shared<CoreCorr>(
+          get_value<int>(args, "tau_lin"), get_value<double>(args, "tau_max"),
+          get_value<int>(args, "delta_N"), comp1, comp2,
+          get_value<std::string>(args, "corr_operation"), m_obs1->observable(),
+          m_obs2->observable(),
+          get_value_or<Utils::Vector3d>(args, "args", {}));
+    });
   }
 
   std::shared_ptr<::Accumulators::Correlator> correlator() {
@@ -83,29 +84,30 @@ public:
   Variant do_call_method(std::string const &method,
                          VariantMap const &parameters) override {
     if (method == "update") {
-      ObjectHandle::context()->parallel_try_catch([&]() {
-        correlator()->update(context()->get_comm());
-      });
+      ObjectHandle::context()->parallel_try_catch(
+          [&]() { correlator()->update(context()->get_comm()); });
     }
     if (method == "finalize") {
-      ObjectHandle::context()->parallel_try_catch([&]() {
-        correlator()->finalize(context()->get_comm());
-      });
+      ObjectHandle::context()->parallel_try_catch(
+          [&]() { correlator()->finalize(context()->get_comm()); });
     }
     if (method == "get_correlation") {
       if (ObjectHandle::context()->is_head_node()) {
         return correlator()->get_correlation();
       }
+      return {};
     }
     if (method == "get_lag_times") {
       if (ObjectHandle::context()->is_head_node()) {
         return correlator()->get_lag_times();
       }
+      return {};
     }
     if (method == "get_samples_sizes") {
       if (ObjectHandle::context()->is_head_node()) {
         return correlator()->get_samples_sizes();
       }
+      return {};
     }
 
     return AccumulatorBase::call_method(method, parameters);
