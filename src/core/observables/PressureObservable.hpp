@@ -32,13 +32,9 @@ public:
   std::vector<std::size_t> shape() const override { return {1}; }
   std::vector<double>
   operator()(boost::mpi::communicator const &comm) const override {
-    if (comm.rank() != 0) {
-      return {};
-    }
-    auto const ptensor = mpi_observable_compute_pressure_tensor();
-    std::vector<double> res{1};
-    res[0] = (ptensor[0] + ptensor[4] + ptensor[8]) / 3.;
-    return res;
+    auto const obs = calculate_pressure();
+
+    return {(obs->accumulate(0, 0) + obs->accumulate(0, 4) + obs->accumulate(0, 8))/ 3.};
   }
 };
 

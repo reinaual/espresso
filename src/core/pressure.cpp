@@ -124,15 +124,3 @@ std::shared_ptr<Observable_stat> calculate_pressure() {
   obs_pressure.mpi_reduce();
   return obs_pressure_ptr;
 }
-
-REGISTER_CALLBACK_MAIN_RANK(calculate_pressure)
-
-Utils::Vector9d mpi_observable_compute_pressure_tensor() {
-  auto const obs =
-      mpi_call(Communication::Result::main_rank, calculate_pressure);
-  Utils::Vector9d pressure_tensor{};
-  for (std::size_t j = 0; j < 9; j++) {
-    pressure_tensor[j] = obs->accumulate(0, j);
-  }
-  return pressure_tensor;
-}
