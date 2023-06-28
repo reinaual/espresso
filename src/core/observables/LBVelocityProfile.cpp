@@ -31,16 +31,16 @@ namespace Observables {
 
 std::vector<double>
 LBVelocityProfile::operator()(boost::mpi::communicator const &comm) const {
-  // TODO: make a copy of LB::get_interpolated_velocity without MPI-callback and
-  // replace this one
-  if (comm.rank() != 0) {
-    return {};
-  }
-
+  // TODO: split this histogram according to domain-decomposition
   Utils::Histogram<double, 3> histogram(n_bins(), limits());
   for (auto const &p : sampling_positions) {
-    const auto v = LB::get_interpolated_velocity(p) * LB::get_lattice_speed();
-    histogram.update(p, v);
+    const auto v = LB::get_interpolated_velocity(comm, p) * LB::get_lattice_speed();
+    if (comm.rank() == 0) {
+      histogram.update(p, v);
+    }
+  }
+  if (comm.rank() != 0) {
+    return {};
   }
   auto hist_tmp = histogram.get_histogram();
   auto const tot_count = histogram.get_tot_count();

@@ -26,6 +26,8 @@
 #include <utils/Span.hpp>
 #include <utils/math/coordinate_transformation.hpp>
 
+#include <boost/mpi/collectives/all_gather.hpp>
+
 #include <cstddef>
 #include <vector>
 
@@ -45,26 +47,27 @@ std::vector<double> CylindricalLBVelocityProfileAtParticlePositions::evaluate(
   }
 
   std::vector<std::vector<pos_type>> global_folded_positions;
-  boost::mpi::gather(comm, local_folded_positions, global_folded_positions, 0);
-
-  if (comm.rank() != 0) {
-    return {};
-  }
+  boost::mpi::all_gather(comm, local_folded_positions, global_folded_positions);
 
   Utils::CylindricalHistogram<double, 3> histogram(n_bins(), limits());
 
   for (auto const &vec : global_folded_positions) {
     for (auto const &pos : vec) {
       auto const v =
-          LB::get_interpolated_velocity(pos) * LB::get_lattice_speed();
+          LB::get_interpolated_velocity(comm, pos) * LB::get_lattice_speed();
 
-      histogram.update(
-          Utils::transform_coordinate_cartesian_to_cylinder(
-              pos - transform_params->center(), transform_params->axis(),
-              transform_params->orientation()),
-          Utils::transform_vector_cartesian_to_cylinder(
-              v, transform_params->axis(), pos - transform_params->center()));
+      if (comm.rank() == 0) {
+        histogram.update(
+            Utils::transform_coordinate_cartesian_to_cylinder(
+                pos - transform_params->center(), transform_params->axis(),
+                transform_params->orientation()),
+            Utils::transform_vector_cartesian_to_cylinder(
+                v, transform_params->axis(), pos - transform_params->center()));
+      }
     }
+  }
+  if (comm.rank() != 0) {
+    return {};
   }
 
   // normalize by number of hits per bin

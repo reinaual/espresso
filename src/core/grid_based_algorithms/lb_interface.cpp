@@ -150,17 +150,18 @@ static Utils::VectorXd<9> get_pressure_tensor() {
   return lb_walberla()->get_pressure_tensor();
 }
 
-REGISTER_CALLBACK_REDUCTION(get_pressure_tensor, std::plus<>())
-
 } // namespace Walberla
 #endif // WALBERLA
 
-Utils::VectorXd<9> const get_pressure_tensor() {
+Utils::VectorXd<9> const
+get_pressure_tensor(boost::mpi::communicator const &comm) {
   if (lattice_switch == ActiveLB::WALBERLA_LB) {
 #ifdef WALBERLA
-    return ::Communication::mpiCallbacks().call(
-        ::Communication::Result::reduction, std::plus<>(),
-        Walberla::get_pressure_tensor);
+    auto const local_pressure_tensor = Walberla::get_pressure_tensor();
+    std::remove_const_t<decltype(local_pressure_tensor)> pressure_tensor;
+    boost::mpi::reduce(comm, local_pressure_tensor, pressure_tensor,
+                       std::plus<>(), 0);
+    return pressure_tensor;
 #endif
   }
   throw NoLBActive();

@@ -33,12 +33,9 @@ public:
   std::vector<std::size_t> shape() const override { return {3, 3}; }
   std::vector<double>
   operator()(boost::mpi::communicator const &comm) const override {
-    if (comm.rank() != 0) {
-      return {};
-    }
     auto const unit_conversion =
         1. / (LB::get_agrid() * Utils::sqr(LB::get_tau()));
-    auto const tensor = LB::get_pressure_tensor() * unit_conversion;
+    auto const tensor = LB::get_pressure_tensor(comm) * unit_conversion;
     return tensor.as_vector();
   }
 };

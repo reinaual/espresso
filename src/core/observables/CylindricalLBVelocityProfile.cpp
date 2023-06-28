@@ -32,20 +32,22 @@ namespace Observables {
 
 std::vector<double> CylindricalLBVelocityProfile::operator()(
     boost::mpi::communicator const &comm) const {
-  if (comm.rank() != 0) {
-    return {};
-  }
-
   Utils::CylindricalHistogram<double, 3> histogram(n_bins(), limits());
   for (auto const &p : sampling_positions) {
     auto const velocity =
-        LB::get_interpolated_velocity(p) * LB::get_lattice_speed();
-    auto const pos_shifted = p - transform_params->center();
-    auto const pos_cyl = Utils::transform_coordinate_cartesian_to_cylinder(
-        pos_shifted, transform_params->axis(), transform_params->orientation());
-    histogram.update(pos_cyl,
-                     Utils::transform_vector_cartesian_to_cylinder(
-                         velocity, transform_params->axis(), pos_shifted));
+        LB::get_interpolated_velocity(comm, p) * LB::get_lattice_speed();
+    
+    if (comm.rank() == 0) {
+      auto const pos_shifted = p - transform_params->center();
+      auto const pos_cyl = Utils::transform_coordinate_cartesian_to_cylinder(
+          pos_shifted, transform_params->axis(), transform_params->orientation());
+      histogram.update(pos_cyl,
+                      Utils::transform_vector_cartesian_to_cylinder(
+                          velocity, transform_params->axis(), pos_shifted));
+    }
+  }
+    if (comm.rank() != 0) {
+    return {};
   }
   auto hist_data = histogram.get_histogram();
   auto const tot_count = histogram.get_tot_count();

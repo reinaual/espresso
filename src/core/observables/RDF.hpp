@@ -21,7 +21,8 @@
 #define OBSERVABLES_RDF_HPP
 
 #include "Observable.hpp"
-#include "Particle.hpp"
+
+#include "PidObservable.hpp"
 
 #include <utils/Span.hpp>
 
@@ -40,10 +41,11 @@ class RDF : public Observable {
   /** Identifiers of the distant particles */
   std::vector<int> m_ids2;
 
-  virtual std::vector<double>
+  std::vector<double>
   evaluate(boost::mpi::communicator const &comm,
-           Utils::Span<const Particle *const> particles1,
-           Utils::Span<const Particle *const> particles2) const;
+           ParticleReferenceRange const &local_particles_1,
+           ParticleReferenceRange const &local_particles_2,
+           const ParticleObservables::traits<Particle> &traits) const;
 
 public:
   // Range of the profile.
