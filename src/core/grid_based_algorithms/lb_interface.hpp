@@ -27,6 +27,13 @@
 #include <stdexcept>
 #include <vector>
 
+// Forward Declarations
+namespace boost {
+namespace mpi {
+class communicator;
+}
+} // namespace boost
+
 /** @brief LB implementation currently active. */
 enum class ActiveLB : int { NONE, WALBERLA_LB };
 
@@ -114,11 +121,25 @@ Utils::Vector3d calc_fluid_momentum();
 Utils::Vector3d const get_interpolated_velocity(Utils::Vector3d const &pos);
 
 /**
+ * @brief Calculates the interpolated fluid velocity on the head node process.
+ * @param pos Position at which the velocity is to be calculated.
+ * @retval interpolated fluid velocity.
+ */
+Utils::Vector3d const get_interpolated_velocity(boost::mpi::communicator const &comm, Utils::Vector3d const &pos);
+
+/**
  * @brief Calculates the interpolated fluid density on the head node process.
  * @param pos Position at which the density is to be calculated.
  * @retval interpolated fluid density.
  */
 double get_interpolated_density(Utils::Vector3d const &pos);
+
+/**
+ * @brief Calculates the interpolated fluid density on the head node process.
+ * @param pos Position at which the density is to be calculated.
+ * @retval interpolated fluid density.
+ */
+double get_interpolated_density(boost::mpi::communicator const &comm, Utils::Vector3d const &pos);
 
 } // namespace LB
 
