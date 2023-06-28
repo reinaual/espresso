@@ -46,8 +46,6 @@
 #include <utility>
 #include <vector>
 
-#include <iostream>
-
 namespace Observables {
 class MockObservable : public Observable {
 public:
