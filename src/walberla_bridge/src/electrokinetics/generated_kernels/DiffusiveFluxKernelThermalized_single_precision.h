@@ -13,7 +13,7 @@
 //  You should have received a copy of the GNU General Public License along
 //  with waLBerla (see COPYING.txt). If not, see <http://www.gnu.org/licenses/>.
 //
-//! \\file FrictionCouplingKernel_double_precision.h
+//! \\file DiffusiveFluxKernelThermalized_single_precision.h
 //! \\author pystencils
 //======================================================================================================================
 
@@ -50,11 +50,15 @@
 namespace walberla {
 namespace pystencils {
 
-class FrictionCouplingKernel_double_precision {
+class DiffusiveFluxKernelThermalized_single_precision {
 public:
-  FrictionCouplingKernel_double_precision(BlockDataID fID_, BlockDataID jID_,
-                                          double D, double kT)
-      : fID(fID_), jID(jID_), D_(D), kT_(kT) {};
+  DiffusiveFluxKernelThermalized_single_precision(
+      BlockDataID jID_, BlockDataID rhoID_, float D, uint32_t field_size_0,
+      uint32_t field_size_1, uint32_t field_size_2, uint32_t seed,
+      uint32_t time_step)
+      : jID(jID_), rhoID(rhoID_), D_(D), field_size_0_(field_size_0),
+        field_size_1_(field_size_1), field_size_2_(field_size_2), seed_(seed),
+        time_step_(time_step), configured_(false) {};
 
   void run(IBlock *block);
 
@@ -65,12 +69,13 @@ public:
   void operator()(IBlock *block) { run(block); }
 
   static std::function<void(IBlock *)>
-  getSweep(const shared_ptr<FrictionCouplingKernel_double_precision> &kernel) {
+  getSweep(const shared_ptr<DiffusiveFluxKernelThermalized_single_precision>
+               &kernel) {
     return [kernel](IBlock *b) { kernel->run(b); };
   }
 
   static std::function<void(IBlock *)> getSweepOnCellInterval(
-      const shared_ptr<FrictionCouplingKernel_double_precision> &kernel,
+      const shared_ptr<DiffusiveFluxKernelThermalized_single_precision> &kernel,
       const shared_ptr<StructuredBlockStorage> &blocks,
       const CellInterval &globalCellInterval, cell_idx_t ghostLayers = 1) {
     return [kernel, blocks, globalCellInterval, ghostLayers](IBlock *b) {
@@ -92,12 +97,26 @@ public:
   }
 
   void configure(const shared_ptr<StructuredBlockStorage> &blocks,
-                 IBlock *block) {}
+                 IBlock *block) {
+    Cell BlockCellBB = blocks->getBlockCellBB(*block).min();
+    block_offset_0_ = uint32_t(BlockCellBB[0]);
+    block_offset_1_ = uint32_t(BlockCellBB[1]);
+    block_offset_2_ = uint32_t(BlockCellBB[2]);
+    configured_ = true;
+  }
 
-  BlockDataID fID;
   BlockDataID jID;
-  double D_;
-  double kT_;
+  BlockDataID rhoID;
+  float D_;
+  uint32_t block_offset_0_;
+  uint32_t block_offset_1_;
+  uint32_t block_offset_2_;
+  uint32_t field_size_0_;
+  uint32_t field_size_1_;
+  uint32_t field_size_2_;
+  uint32_t seed_;
+  uint32_t time_step_;
+  bool configured_;
 };
 
 } // namespace pystencils

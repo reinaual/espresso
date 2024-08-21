@@ -17,12 +17,13 @@
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.2, lbmpy v1.2,
-// lbmpy_walberla/pystencils_walberla from waLBerla commit ref:
-// a839fac6ef7d0c58e7710e4d50490e9dd7146b4a
+// kernel generated with pystencils v1.3.3, lbmpy v1.3.3,
+// lbmpy_walberla/pystencils_walberla from waLBerla commit
+// b0842e1a493ce19ef1bbb8d2cf382fc343970a7f
 
 #pragma once
 #include "core/DataTypes.h"
+#include "core/logging/Logging.h"
 
 #include "domain_decomposition/BlockDataID.h"
 #include "domain_decomposition/IBlock.h"
@@ -54,7 +55,7 @@ public:
   ReactionKernelBulk_1_single_precision(BlockDataID rho_0ID_, float order_0,
                                         float rate_coefficient, float stoech_0)
       : rho_0ID(rho_0ID_), order_0_(order_0),
-        rate_coefficient_(rate_coefficient), stoech_0_(stoech_0){};
+        rate_coefficient_(rate_coefficient), stoech_0_(stoech_0) {};
 
   void run(IBlock *block);
 
@@ -90,6 +91,9 @@ public:
       this->runOnCellInterval(blocks, globalCellInterval, ghostLayers, b);
     };
   }
+
+  void configure(const shared_ptr<StructuredBlockStorage> &blocks,
+                 IBlock *block) {}
 
   BlockDataID rho_0ID;
   float order_0_;
